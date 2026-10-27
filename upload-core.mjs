@@ -2,7 +2,7 @@ export function prepareRunning(raw){
  if(typeof raw!=='string'||raw.length>2*1024*1024||/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(raw))throw Error('Geen geldige tekstconfig ontvangen.');
  if(/^\s*</.test(raw)||/\b(?:MASKED|REDACTED|CHANGEME)\b|<(?:PASSWORD|SECRET|COMMUNITY|SNMP[^>]*)>/i.test(raw))throw Error('Dit is XML, een template of een gemaskeerde export.');
  const lines=raw.replace(/\r\n?/g,'\n').split('\n');let i=0;
- while(i<lines.length&&(!lines[i].trim()||/^\s*(?:!|Building configuration\.\.\.|Current configuration\s*:\s*\d+ bytes|show running-config)\s*$/.test(lines[i])))i++;
+ while(i<lines.length&&(!lines[i].trim()||/^\s*!/.test(lines[i])||/^\s*(?:Building configuration\.\.\.|Current configuration\s*:\s*\d+ bytes|show running-config)\s*$/.test(lines[i])))i++;
  if(!/^version\s+\S/.test(lines[i]||''))throw Error('Geen volledige IOS running-config ontvangen.');
  const commands=[];let hostname=null;
  for(;i<lines.length;i++){
