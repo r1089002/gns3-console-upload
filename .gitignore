@@ -1,0 +1,10 @@
+*.cfg
+*.txt
+*.xml
+*.log
+*.zip
+*.ovpn
+*.key
+*.pem
+.env*
+node_modules/
