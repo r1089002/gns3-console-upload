@@ -1,11 +1,23 @@
-# GNS3 Console Upload — teststand
+# GNS3 Console Upload
 
-Statische browserpagina voor de GNS3-menuactie **Upload config**. Open de pagina via de knop in GNS3; los openen bevat geen bronconfig.
+Statische HTTPS-pagina voor de menuactie **Upload config** bij Cisco-switches in GNS3. Open via GNS3; los openen bevat geen bronconfig.
 
-**Fysiek verzenden staat uit** (`SERIAL_WRITES_ENABLED=false`). De pagina opent in deze teststand geen seriële poort. Geen configuratie wordt toegepast of opgeslagen op een toestel.
+## Handmatige fysieke upload
 
-GNS3 haalt de running-config met de bestaande gebruikersautorisatie op. Alleen de bronconfig wordt via een gecontroleerde postMessage-handover tijdelijk aan dit venster gegeven. Geen GNS3-token wordt doorgegeven. Config blijft in browsergeheugen; geen opslag in GitHub, URL, localStorage, analytics of een upload-API. GitHub serveert uitsluitend deze statische appbestanden en verwerkt zijn normale hostingverzoeklogs.
+De gebruiker heeft fysieke verzending vrijgegeven (`SERIAL_WRITES_ENABLED=true`). Een geldige actuele running-config en een expliciete klik op **Upload naar switch** zijn vereist. Daarna kiest de gebruiker de seriële poort in de browser. Geen poort wordt automatisch geopend bij laden of ontvangen van de bron. Chrome of Edge op een laptop met Web Serial vereist. Standaard 9600 baud; 115200 is instelbaar. De fysieke switch staat vooraf al aangemeld op een normale Cisco IOS # prompt. PuTTY moet de poort vrijlaten.
 
-De toegelaten bron-origin staat in upload-settings.mjs. De GNS3-bron blijft via de bestaande LAN/VPN-verbinding bereikbaar. De HTTPS-pagina hoeft zelf geen HTTP-exportservice te benaderen. Chrome/Edge op een laptop bieden Web Serial; deze teststand gebruikt die API nog niet.
+Geen fysieke loginwizard, automatische poortvertaling, automatische opslag voor herstart of automatische herhaling. IOS-fouten, ontbrekende prompt of verbindingsverlies stoppen de overdracht. Reeds toegepaste regels kunnen actief blijven; stoppen draait niets terug. Na een begonnen mislukte upload is opnieuw openen nodig.
 
-Geen lokale server, browserextensie of certificaatinstallatie nodig om deze gehoste pagina te openen. Echte fysieke verzending en de bijbehorende hardwarecontrole zijn een afzonderlijke, expliciet vrij te geven vervolgstap. Geen fysieke loginwizard, automatische poortvertaling of automatische startup-save.
+## Voortgang
+
+Ophalen toont een onbepaalde balk zolang de exporter de switch uitleest; daarna 100% wanneer de volledige config ontvangen en gevalideerd is. Er wordt geen percentage verzonnen. Upload toont het aandeel door IOS beantwoorde opdrachten, inclusief configure terminal/end. Dit is geen onafhankelijke inhoudelijke validatie van de fysieke switchconfig.
+
+## Gegevens en hosting
+
+Alleen statische appcode staat in deze repository. GNS3 haalt de actuele running via bestaande autorisatie op; gecontroleerde postMessage-overdracht geeft de config uitsluitend aan het geopende tabblad. Geen GNS3-token wordt doorgegeven aan de uploader. De app uploadt config niet naar GitHub en bewaart die niet in URL, localStorage of analytics. Sluiten wist de pagina-inhoud uit de actieve app; dit is geen garantie tegen browserextensies of een gecompromitteerde laptop. GitHub verwerkt gewone hostingverzoeklogs.
+
+De GNS3-bron gebruikt nog de bestaande HTTP/LAN/VPN-route; HTTPS-hosting beveiligt die eerdere stap niet alsnog. Bescherm GitHub-schrijfrechten: wie de gepubliceerde code kan aanpassen, kan de toekomstige werking veranderen.
+
+## Testgrens
+
+De geactiveerde UI is met fictieve bronconfig en volledig vervangen seriële browser-API getest. De ontwikkelaar heeft bij deze vrijgave geen echte COM-poort geopend en niets naar fysieke apparatuur verstuurd. Een eerdere proef bevestigde echte GNS3-configontvangst zonder fysieke verzending. De echte fysieke upload moet de gebruiker zelf testen.
