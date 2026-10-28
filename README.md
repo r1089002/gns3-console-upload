@@ -25,3 +25,9 @@ De geactiveerde UI is met fictieve bronconfig en volledig vervangen seriële bro
 ## Voorbereide labconfig
 
 GNS3 kan de pagina een voorbereide uploadconfig geven: bekende console-, enable- en gebruikerswachtwoorden zijn dan op de GNS3-server vervangen door expliciet ingestelde klare labwaarden. De pagina toont dat dit een bewerkte uploadconfig is. Onbekende wachtwoorden/hashes worden niet terugvertaald of gegokt. Het private inlog-/wachtwoordprofiel staat uitsluitend op de GNS3-server en zit niet in deze repository. De voorbereide config zelf bevat gevoelige klare tekst en moet privé blijven. De switch kan secrets na ontvangst zelf weer hashen.
+
+## Stoppen, afsluiten en voortgang
+
+De pagina beheert open-, schrijf- en leesbewerkingen met deadlines. Stop vraagt het afbreken van actieve I/O en het sluiten van de poort aan; er worden daarna geen nieuwe opdrachten gestart. Als een driverbewerking nog niet afgerond is, blijft de afsluiting gevolgd en toont de pagina dat de poort nog wordt vrijgegeven. Opnieuw uploaden is dan geblokkeerd. Eerder verstuurde bytes/toestelwijzigingen worden niet teruggedraaid.
+
+Voortgang en samenvatting tellen dezelfde consoleopdrachten, inclusief configure terminal. De pagina toont het tijdstip waarop de config in dit tabblad is ontvangen en hoe lang dat geleden is; dit is geen garantie dat teamgenoten sindsdien niets aan de bron hebben gewijzigd. Geen harde vervaltijd of automatische herlaadactie toegevoegd.
