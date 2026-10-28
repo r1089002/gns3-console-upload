@@ -21,3 +21,7 @@ De GNS3-bron gebruikt nog de bestaande HTTP/LAN/VPN-route; HTTPS-hosting beveili
 ## Testgrens
 
 De geactiveerde UI is met fictieve bronconfig en volledig vervangen seriële browser-API getest. De ontwikkelaar heeft bij deze vrijgave geen echte COM-poort geopend en niets naar fysieke apparatuur verstuurd. Een eerdere proef bevestigde echte GNS3-configontvangst zonder fysieke verzending. De echte fysieke upload moet de gebruiker zelf testen.
+
+## Voorbereide labconfig
+
+GNS3 kan de pagina een voorbereide uploadconfig geven: bekende console-, enable- en gebruikerswachtwoorden zijn dan op de GNS3-server vervangen door expliciet ingestelde klare labwaarden. De pagina toont dat dit een bewerkte uploadconfig is. Onbekende wachtwoorden/hashes worden niet terugvertaald of gegokt. Het private inlog-/wachtwoordprofiel staat uitsluitend op de GNS3-server en zit niet in deze repository. De voorbereide config zelf bevat gevoelige klare tekst en moet privé blijven. De switch kan secrets na ontvangst zelf weer hashen.

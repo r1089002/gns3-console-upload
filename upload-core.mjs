@@ -34,4 +34,4 @@ export async function sendIOS(plan,exchange,{signal,onProgress=()=>{}}={}){
  }
  return {count,saved:false};
 }
-export function receiver(origin,source,job){let used=false;return event=>{const d=event.data;if(used||!source||event.source!==source||event.origin!==origin||d?.version!==1||d.type!=='running'||d.job!==job||typeof d.name!=='string'||d.name.length>100)return null;const plan=prepareRunning(d.config);used=true;return {...plan,name:d.name,config:d.config};};}
+export function receiver(origin,source,job){let used=false;return event=>{const d=event.data;if(used||!source||event.source!==source||event.origin!==origin||d?.version!==1||d.type!=='running'||d.job!==job||typeof d.name!=='string'||d.name.length>100)return null;const plan=prepareRunning(d.config);used=true;return {...plan,name:d.name,config:d.config,prepared:d.prepared===true};};}
