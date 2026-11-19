@@ -15,11 +15,11 @@ export class SerialSession {
   this.writer=this.port.writable.getWriter();this.reader=this.port.readable.getReader();const reader=this.reader,decoder=new TextDecoder();
   this.reading=(async()=>{try{while(!this.closing){const {value,done}=await reader.read();if(this.closing)break;if(done){if(!this.closing)this.stop(Error('Consoleverbinding verbroken.'));break;}this.buffer+=decoder.decode(value,{stream:true});if(this.buffer.length>2*1024*1024)throw Error('Consolelimiet bereikt.');}}catch(error){if(!this.closing)this.stop(Error('Consoleverbinding verbroken.'));}finally{try{reader.releaseLock();}catch{}}})();
  }
- async exchange(command){
+ async exchange(command,{acceptAdditionalPrompt}={}){
   this.guard();const deadline=now()+this.operationMs;this.buffer='';const writer=this.writer;if(!writer)throw Error('De consolepoort is niet geopend.');
   this.writing=Promise.resolve().then(()=>{this.guard();this.wrote=true;return writer.write(new TextEncoder().encode(command==='\r'?command:command.replace(/\n/g,'\r')+'\r'));});
   await this.wait(this.writing,deadline);this.guard();let stable=null;
-  while(true){this.guard();if(/(?:^|\n)[\w.-]+(?:\([^\n]*\))?[#>]\s*$/.test(this.buffer.replace(/\r/g,'\n'))){if(stable===this.buffer)return this.buffer;stable=this.buffer;}else stable=null;await this.wait(pause(this.pollMs),deadline);}
+  while(true){this.guard();if(/(?:^|\n)[\w.-]+(?:\([^\n]*\))?[#>]\s*$/.test(this.buffer.replace(/\r/g,'\n'))||acceptAdditionalPrompt?.(this.buffer)){if(stable===this.buffer)return this.buffer;stable=this.buffer;}else stable=null;await this.wait(pause(this.pollMs),deadline);}
  }
  beginClose(){
   if(this.closeJob)return;this.closing=true;this.buffer='';this.controller.abort(this.reason||Error('De consoleverbinding wordt gesloten.'));

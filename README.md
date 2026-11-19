@@ -8,7 +8,7 @@ De gebruiker heeft fysieke verzending vrijgegeven (`SERIAL_WRITES_ENABLED=true`)
 
 Geen fysieke loginwizard, automatische poortvertaling, automatische opslag voor herstart of automatische herhaling. IOS-fouten, ontbrekende prompt of verbindingsverlies stoppen de overdracht. Reeds toegepaste regels kunnen actief blijven; stoppen draait niets terug. Na een begonnen mislukte upload is opnieuw openen nodig.
 
-De uploader houdt opslagopdrachten zoals `write memory` en `copy running-config startup-config` uit de fysieke overdracht. **Opslagopdrachten verbergen** staat standaard aan. Uitvinken toont eventuele overgeslagen opdrachten in een aparte voorvertoning. Beide standen gebruiken hetzelfde uploadplan.
+**Opslagopdrachten uit de config filteren** staat standaard aangevinkt. Uitvinken neemt `write memory` en `copy running-config startup-config` mee als deze in de opgehaalde bron staan. De uploader voert ze na `end` uit, zodat de fysieke switch de configuratie ook voor een herstart bewaart. Andere opslagvarianten blijven gefilterd.
 
 ## Voortgang
 

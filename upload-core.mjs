@@ -1,6 +1,11 @@
 const EXEC_COMMANDS=['write','copy','save','erase','reload','format','delete','configure','do'];
 const BANNER_DELIMITERS=['#','%','~','|','$','@'];
 const INVALID_WIRE_CHAR=/[\x00-\x08\x0b-\x1f\x7f]/;
+const COPY_TO_STARTUP='copy running-config startup-config';
+const SUPPORTED_SAVE_COMMANDS=new Set(['write memory',COPY_TO_STARTUP]);
+const STARTUP_FILENAME_PROMPT=/(?:^|[\r\n])\s*Destination file\s?name \[startup-config\]\?\s*$/i;
+const IOS_ERROR=/(?:^|[\r\n])\s*(?:%\s*(?:Invalid|Incomplete|Ambiguous|Error)|Error:)/i;
+const EXEC_PROMPT=/^[\w.-]+#$/;
 
 function prefix(value,command){return Boolean(value)&&command.startsWith(value);}
 function words(line){return line.replace(/\?/g,'').trim().toLowerCase().split(/\s+/);}
@@ -38,7 +43,8 @@ export function prepareRunning(raw){
  const lines=raw.replace(/\r\n?/g,'\n').split('\n');let i=0;
  while(i<lines.length&&(!lines[i].trim()||/^\s*!/.test(lines[i])||/^\s*(?:Building configuration\.\.\.|Current configuration\s*:\s*\d+ bytes|show running-config)\s*$/.test(lines[i])))i++;
  if(!/^version\s+\S/.test(lines[i]||''))throw Error('Geen volledige IOS running-config ontvangen.');
- const commands=[],excludedSaveCommands=[],excludedLines=new Set();let hostname=null;
+ const commands=[],saveCommands=[],excludedSaveCommands=[];
+ const excludedLines=new Set(),unsupportedSaveLines=new Set();let hostname=null;
  for(;i<lines.length;i++){
   const line=lines[i].trim();if(!line||line.startsWith('!'))continue;
   const banner=/^banner\s+(\S+)\s+(\^[A-Za-z@\[\\\]^_?]|.)(.*)$/.exec(line);
@@ -51,29 +57,55 @@ export function prepareRunning(raw){
    if(!safe||!validUploadCommand(command))throw Error('Banner kan niet veilig worden doorgestuurd.');
    commands.push(command);continue;
   }
-  if(savesConfiguration(line)){excludedSaveCommands.push(line);excludedLines.add(i);continue;}
+  if(savesConfiguration(line)){
+   excludedSaveCommands.push(line);
+   excludedLines.add(i);
+   const canonical=line.toLowerCase().replace(/[ \t]+/g,' ');
+   if(SUPPORTED_SAVE_COMMANDS.has(canonical))saveCommands.push(canonical);
+   else unsupportedSaveLines.add(i);
+   continue;
+  }
   if(!validUploadCommand(line))throw Error('De bron bevat een uitvoeringsopdracht in plaats van alleen running-config.');
   if(/^hostname\s+/.test(line)){if(hostname)throw Error('Meerdere hostnames in de bron.');hostname=line.split(/\s+/)[1];}
   commands.push(line);
  }
  if(!hostname||!endsInConfigEnd(commands))throw Error('De running-config heeft geen geldige afsluiting.');
  const config=excludedLines.size?lines.filter((_,index)=>!excludedLines.has(index)).join('\n'):raw;
- return {hostname,commands,config,excludedSaveCommands,bytes:new TextEncoder().encode(raw).byteLength};
+ const configWithSaves=unsupportedSaveLines.size?lines.filter((_,index)=>!unsupportedSaveLines.has(index)).join('\n'):raw;
+ return {hostname,commands,config,configWithSaves,saveCommands,excludedSaveCommands,bytes:new TextEncoder().encode(raw).byteLength};
 }
-export async function sendIOS(plan,exchange,{signal,onProgress=()=>{}}={}){
+export async function sendIOS(plan,exchange,{signal,includeSaveCommands=false,onProgress=()=>{}}={}){
  const commands=Array.isArray(plan?.commands)?[...plan.commands]:[];
  if(!commands.every(validUploadCommand)||!endsInConfigEnd(commands))throw Error('De upload bevat een geblokkeerde of onvolledige opdracht.');
+ const saves=includeSaveCommands===true?plan.saveCommands:[];
+ if(!Array.isArray(saves)||!saves.every(command=>SUPPORTED_SAVE_COMMANDS.has(command)))throw Error('De upload bevat een onbekende opslagopdracht.');
+ const saveCommands=[...saves];
  const send=['configure terminal',...commands];
+ const total=send.length+saveCommands.length;
  let count=0;const check=()=>{if(signal?.aborted)throw Error(`Afgebroken na ${count} opdrachten. Eerdere regels kunnen al actief zijn.`);};
  check();const initial=await exchange('\r');if(!/(?:^|\n)[\w.-]+#\s*$/.test(initial.replace(/\r/g,'\n'))||/@/.test(initial.split(/[\r\n]/).at(-1)))throw Error('Het fysieke toestel moet al op een normale IOS # prompt staan.');
  for(const command of send){
   check();const reply=await exchange(command);
-  if(/(?:^|[\r\n])\s*(?:%\s*(?:Invalid|Incomplete|Ambiguous|Error)|Error:)/i.test(reply))throw Error(`IOS-fout. Gestopt na ${count} bevestigde opdrachten; eerdere regels kunnen actief zijn.`);
+  if(IOS_ERROR.test(reply))throw Error(`IOS-fout. Gestopt na ${count} bevestigde opdrachten; eerdere regels kunnen actief zijn.`);
   const tail=reply.replace(/\r/g,'\n').trimEnd().split('\n').at(-1)||'';
-  const expectedPrompt=command==='end'?/^[\w.-]+#$/:/^[\w.-]+\([^\n]+\)#$/;
+  const expectedPrompt=command==='end'?EXEC_PROMPT:/^[\w.-]+\([^\n]+\)#$/;
   if(!expectedPrompt.test(tail))throw Error(`Onverwachte IOS-prompt na opdracht ${count+1}. Gestopt zonder herhaling.`);
-  count++;onProgress(count,send.length);
+  count++;onProgress(count,total);
  }
- return {count,saved:false};
+ for(const command of saveCommands){
+  check();
+  const isCopy=command===COPY_TO_STARTUP;
+  let reply=await exchange(command,isCopy?{acceptAdditionalPrompt:text=>STARTUP_FILENAME_PROMPT.test(text)}:undefined);
+  if(isCopy&&!IOS_ERROR.test(reply)&&STARTUP_FILENAME_PROMPT.test(reply)){
+   check();
+   reply=await exchange('\r');
+  }
+  const tail=reply.replace(/\r/g,'\n').trimEnd().split('\n').at(-1)||'';
+  if(IOS_ERROR.test(reply)||!EXEC_PROMPT.test(tail)||!/\[OK\]|\b\d+ bytes copied\b/i.test(reply)){
+   throw Error('Opslaan als startup-config is niet bevestigd. Controleer de switch.');
+  }
+  count++;onProgress(count,total);
+ }
+ return {count,saved:saveCommands.length>0};
 }
 export function receiver(origin,source,job){let used=false;return event=>{const d=event.data;if(used||!source||event.source!==source||event.origin!==origin||d?.version!==1||d.type!=='running'||d.job!==job||typeof d.name!=='string'||d.name.length>100)return null;const plan=prepareRunning(d.config);used=true;return {...plan,name:d.name,prepared:d.prepared===true};};}
