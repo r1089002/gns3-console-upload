@@ -1,5 +1,5 @@
 import {SERIAL_WRITES_ENABLED,SOURCE_ORIGINS} from './upload-settings.mjs?v=20261028-3';
-import {receiver,sendIOS} from './upload-core.mjs?v=20261119-2';
+import {receiver,sendIOS} from './upload-core.mjs?v=20261119-3';
 import {SerialSession,serialErrorMessage} from './upload-serial.mjs?v=20261119-2';
 const $=id=>document.getElementById(id);let job=null,origin=null,accept=null,source=null,session=null,cleanupPending=false,ended=false,busy=false,operation=null,confirmed=0,receivedAt=null,ageTimer=null,ageMinute=-1;
 const saveFilter=$('hide-save-commands');
@@ -48,14 +48,18 @@ function closeNote(result){return result.complete?'':result.pending?' De COM-poo
 $('send').onclick=async event=>{
  if(!event.isTrusted||!SERIAL_WRITES_ENABLED||!source||busy||cleanupPending||!serialAvailable())return;
  const includeSaveCommands=!saveFilter.checked;
- busy=true;confirmed=0;operation=new AbortController();const signal=operation.signal;let owned=null,outcome='done',message='';updateSend();$('baud').disabled=true;$('stop').hidden=true;$('browser-note').textContent='';$('app').dataset.portState='choosing';phase('uploading','COM-poort kiezen');status('Kies de consolepoort van jouw fysieke switch. Annuleren kan in het browservenster.');
+ busy=true;confirmed=0;operation=new AbortController();const signal=operation.signal;let owned=null,outcome='done',message='',configurationStarted=false;updateSend();$('baud').disabled=true;$('stop').hidden=true;$('browser-note').textContent='';$('app').dataset.portState='choosing';phase('uploading','COM-poort kiezen');status('Kies de consolepoort van jouw fysieke switch. Annuleren kan in het browservenster.');
  try{
   const chosen=await navigator.serial.requestPort();if(signal.aborted)throw Error('Afgebroken.');owned=new SerialSession(chosen);session=owned;$('stop').hidden=false;$('app').dataset.portState='opening';phase('uploading','Console openen');status('Consoleverbinding openen…');
   await owned.open({baudRate:Number($('baud').value),dataBits:8,stopBits:1,parity:'none',flowControl:'none'});$('app').dataset.portState='open';phase('uploading','Upload actief');status('Console controleren en configuratie overdragen…');
-  const result=await sendIOS(source,(command,options)=>owned.exchange(command,options),{signal,includeSaveCommands,onProgress:(n,total)=>{confirmed=n;const percent=Math.floor(n/total*100);$('upload-progress').value=percent;$('upload-value').textContent=percent+'%';$('upload-note').textContent=`${n} van ${total} consoleopdrachten door de switch beantwoord.`;}});message=`Upload afgerond. ${result.count} consoleopdrachten bevestigd. ${result.saved?'Opgeslagen als startup-config.':'Niet opgeslagen voor herstart.'}`;source=null;
+  const exchange=(command,options)=>{
+   if(command==='configure terminal')configurationStarted=true;
+   return owned.exchange(command,options);
+  };
+  const result=await sendIOS(source,exchange,{signal,includeSaveCommands,onProgress:(n,total)=>{confirmed=n;const percent=Math.floor(n/total*100);$('upload-progress').value=percent;$('upload-value').textContent=percent+'%';$('upload-note').textContent=`${n} van ${total} consoleopdrachten door de switch beantwoord.`;}});message=`Upload afgerond. ${result.count} consoleopdrachten bevestigd. ${result.saved?'Opgeslagen als startup-config.':'Niet opgeslagen voor herstart.'}`;source=null;
  }catch(error){
   if(!signal.aborted&&!owned?.wrote&&error.name==='NotFoundError'){outcome='ready';message=serialErrorMessage(error);}
-  else{outcome=signal.aborted?'stopped':'error';message=(signal.aborted?'Upload gestopt.':serialErrorMessage(error))+` ${confirmed} consoleopdrachten bevestigd.`+(owned?.wrote?' Eerdere regels kunnen al actief zijn. Controleer de fysieke console voordat je opnieuw begint.':' Er is geen configuratie verstuurd.');if(owned?.wrote)source=null;}
+  else{outcome=signal.aborted?'stopped':'error';message=(signal.aborted?'Upload gestopt.':serialErrorMessage(error))+` ${confirmed} consoleopdrachten bevestigd.`+(configurationStarted?' Eerdere regels kunnen al actief zijn. Controleer de fysieke console voordat je opnieuw begint.':' Er is geen configuratie verstuurd.');if(configurationStarted)source=null;}
  }finally{
   const closed=owned?await owned.close():{complete:true};cleanupPending=!closed.complete;busy=false;$('stop').hidden=true;$('baud').disabled=cleanupPending;$('app').dataset.portState=closed.complete?'closed':closed.pending?'closing':'unknown';phase(outcome,outcome==='done'?'Upload voltooid':outcome==='ready'?'Gereed voor upload':outcome==='stopped'?'Gestopt':'Upload onderbroken');status(message+closeNote(closed));renderUploadConfig();updateSend();if(outcome==='done'){$('upload-progress').value=100;$('upload-value').textContent='100%';}
   if(closed.complete){if(session===owned)session=null;}

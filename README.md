@@ -6,7 +6,7 @@ Statische HTTPS-pagina voor de menuactie **Upload config** bij Cisco-switches in
 
 De gebruiker heeft fysieke verzending vrijgegeven (`SERIAL_WRITES_ENABLED=true`). Een geldige actuele running-config en een expliciete klik op **Upload naar switch** zijn vereist. Daarna kiest de gebruiker de seriële poort in de browser. Geen poort wordt automatisch geopend bij laden of ontvangen van de bron. Chrome of Edge op een laptop met Web Serial vereist. Standaard 9600 baud; 115200 is instelbaar. De fysieke switch staat vooraf al aangemeld op een normale Cisco IOS # prompt. PuTTY moet de poort vrijlaten.
 
-Geen fysieke loginwizard, automatische poortvertaling, automatische opslag voor herstart of automatische herhaling. IOS-fouten, ontbrekende prompt of verbindingsverlies stoppen de overdracht. Reeds toegepaste regels kunnen actief blijven; stoppen draait niets terug. Na een begonnen mislukte upload is opnieuw openen nodig.
+De uploader stopt bij IOS-fouten, een ontbrekende prompt of verbindingsverlies. Zolang alleen de promptcontrole is uitgevoerd, blijft de klaargezette configuratie beschikbaar om handmatig opnieuw te proberen na vrijgave van de COM-poort. Bij een prompt met `>` gebruik je zelf `enable` en in configuratiemodus gebruik je `end`. Na een poging die `configure terminal` heeft bereikt, vraagt de uploader bij een fout om de fysieke console te controleren en de pagina opnieuw te openen.
 
 **Opslagopdrachten uit de config filteren** staat standaard aangevinkt. Uitvinken neemt `write memory` en `copy running-config startup-config` mee als deze in de opgehaalde bron staan. De uploader voert ze na `end` uit, zodat de fysieke switch de configuratie ook voor een herstart bewaart. Andere opslagvarianten blijven gefilterd.
 
