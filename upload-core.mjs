@@ -5,6 +5,10 @@ const COPY_TO_STARTUP='copy running-config startup-config';
 const SUPPORTED_SAVE_COMMANDS=new Set(['write memory',COPY_TO_STARTUP]);
 const STARTUP_FILENAME_PROMPT=/(?:^|[\r\n])\s*Destination file\s?name \[startup-config\]\?\s*$/i;
 const IOS_ERROR=/(?:^|[\r\n])\s*(?:%\s*(?:Invalid|Incomplete|Ambiguous|Error)|Error:)/i;
+const DISPLAYABLE_IOS_ERRORS=new Set([
+ 'configure terminal','no ip routing','no ip cef','no ipv6 cef',
+ 'service compress-config','negotiation auto','switchport trunk encapsulation dot1q','spanning-tree portfast edge',
+]);
 const EXEC_PROMPT=/^[\w.-]+#$/;
 const CONFIG_PROMPT=/^[\w.-]+\([^\n]+\)#$/;
 
@@ -92,7 +96,10 @@ export async function sendIOS(plan,exchange,{signal,includeSaveCommands=false,on
  if(!EXEC_PROMPT.test(prompt))throw Error('Het fysieke toestel moet op een normale IOS-prompt met # staan. Controleer de gekozen COM-poort en de aanmelding.');
  for(const command of send){
   check();const reply=await exchange(command);
-  if(IOS_ERROR.test(reply))throw Error(`IOS-fout. Gestopt na ${count} bevestigde opdrachten; eerdere regels kunnen actief zijn.`);
+  if(IOS_ERROR.test(reply)){
+   const label=DISPLAYABLE_IOS_ERRORS.has(command)?` (${command})`:'';
+   throw Error(`IOS weigerde opdracht ${count+1}${label}.`);
+  }
   const tail=reply.replace(/\r/g,'\n').trimEnd().split('\n').at(-1)||'';
   const expectedPrompt=command==='end'?EXEC_PROMPT:CONFIG_PROMPT;
   if(!expectedPrompt.test(tail))throw Error(`Onverwachte IOS-prompt na opdracht ${count+1}. Gestopt zonder herhaling.`);

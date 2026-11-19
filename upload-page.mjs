@@ -1,5 +1,5 @@
 import {SERIAL_WRITES_ENABLED,SOURCE_ORIGINS} from './upload-settings.mjs?v=20261028-3';
-import {receiver,sendIOS} from './upload-core.mjs?v=20261119-3';
+import {receiver,sendIOS} from './upload-core.mjs?v=20261119-4';
 import {SerialSession,serialErrorMessage} from './upload-serial.mjs?v=20261119-2';
 const $=id=>document.getElementById(id);let job=null,origin=null,accept=null,source=null,session=null,cleanupPending=false,ended=false,busy=false,operation=null,confirmed=0,receivedAt=null,ageTimer=null,ageMinute=-1;
 const saveFilter=$('hide-save-commands');
