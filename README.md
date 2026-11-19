@@ -8,6 +8,8 @@ De gebruiker heeft fysieke verzending vrijgegeven (`SERIAL_WRITES_ENABLED=true`)
 
 Geen fysieke loginwizard, automatische poortvertaling, automatische opslag voor herstart of automatische herhaling. IOS-fouten, ontbrekende prompt of verbindingsverlies stoppen de overdracht. Reeds toegepaste regels kunnen actief blijven; stoppen draait niets terug. Na een begonnen mislukte upload is opnieuw openen nodig.
 
+De uploader houdt opslagopdrachten zoals `write memory` en `copy running-config startup-config` uit de fysieke overdracht. **Opslagopdrachten verbergen** staat standaard aan. Uitvinken toont eventuele overgeslagen opdrachten in een aparte voorvertoning. Beide standen gebruiken hetzelfde uploadplan.
+
 ## Voortgang
 
 Ophalen toont een onbepaalde balk zolang de exporter de switch uitleest; daarna 100% wanneer de volledige config ontvangen en gevalideerd is. Er wordt geen percentage verzonnen. Upload toont het aandeel door IOS beantwoorde opdrachten, inclusief configure terminal/end. Dit is geen onafhankelijke inhoudelijke validatie van de fysieke switchconfig.

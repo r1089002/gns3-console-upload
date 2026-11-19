@@ -6,3 +6,10 @@ body:has(.upload-app){background:#f5f7fa;color:#192c43}.upload-app{max-width:118
 .upload-app #source-freshness{margin:-17px 0 24px;font-size:10px;color:#708093}.upload-app #received-at{font-variant-numeric:tabular-nums}
 
 .upload-app #fetch-progress::-webkit-progress-value{transition:none}
+
+.save-control{margin:-12px 0 18px;padding:10px 13px;border:1px solid #e3ebed;border-radius:8px;background:#f7fafb}
+.save-option{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:#2d455d;cursor:pointer}
+.save-option input{width:16px;height:16px;margin:0;flex:none;accent-color:#08796a}
+.save-control .progress-note{margin:4px 0 0 24px}
+.save-control #save-command-preview{margin-top:8px}
+.upload-app #save-command-lines{margin:6px 0 0 24px;white-space:pre-wrap;overflow-wrap:anywhere}
