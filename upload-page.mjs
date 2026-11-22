@@ -1,11 +1,16 @@
 import {SERIAL_WRITES_ENABLED,SOURCE_ORIGINS} from './upload-settings.mjs?v=20261028-3';
-import {prepareRunning,receiver,sendIOS} from './upload-core.mjs?v=20261122-2';
+import {describeSNMP,prepareRunning,receiver,sendIOS,validSNMPCredential} from './upload-core.mjs?v=20261122-3';
 import {SerialSession,serialErrorMessage} from './upload-serial.mjs?v=20261122-1';
 import {ConsoleTranscript} from './upload-terminal.mjs?v=20261122-1';
 const $=id=>document.getElementById(id);let job=null,origin=null,accept=null,source=null,session=null,cleanupPending=false,ended=false,busy=false,operation=null,confirmed=0,receivedAt=null,ageTimer=null,ageMinute=-1;
 const saveFilter=$('hide-save-commands');
 const routingFilter=$('filter-no-ip-routing');
+const snmpFilter=$('snmp-profile');
+const snmpAuth=$('snmp-auth');
+const snmpPriv=$('snmp-priv');
+let snmpDescription=null;
 routingFilter.checked=false;
+snmpFilter.checked=false;
 const consoleInput = $('console-input');
 const consoleOutput = $('console-output');
 const consoleStates = {
@@ -20,9 +25,16 @@ const serialAvailable=()=>!!navigator.serial&&isSecureContext;
 function status(value){$('status').textContent=value;}
 function phase(value,label){$('app').dataset.phase=value;$('phase-badge').textContent=label;const step=value==='fetching'||value==='waiting'?'fetch':value==='ready'?'ready':value==='error'&&$('fetch-progress').value<100?'fetch':'upload';for(const key of ['fetch','ready','upload']){const el=$('step-'+key);el.toggleAttribute('data-active',key===step);if(key===step)el.setAttribute('aria-current','step');else el.removeAttribute('aria-current');}}
 function updateSend(){
- $('send').disabled=!SERIAL_WRITES_ENABLED||!serialAvailable()||!source||busy||cleanupPending||writingManually||consoleState!=='open'||!transcript.ready;
+ const authReady=validSNMPCredential(snmpAuth.value);
+ const privReady=validSNMPCredential(snmpPriv.value);
+ const snmpReady=snmpDescription&&authReady&&privReady;
+ $('send').disabled=!SERIAL_WRITES_ENABLED||!serialAvailable()||!source||busy||cleanupPending||writingManually||consoleState!=='open'||!transcript.ready||(snmpFilter.checked&&!snmpReady);
  saveFilter.disabled=busy||cleanupPending;
  routingFilter.disabled=busy||cleanupPending;
+ snmpFilter.disabled=!snmpDescription||busy||cleanupPending;
+ snmpAuth.disabled=snmpPriv.disabled=snmpFilter.disabled||!snmpFilter.checked;
+ snmpAuth.setAttribute('aria-invalid',String(Boolean(snmpAuth.value&&!authReady)));
+ snmpPriv.setAttribute('aria-invalid',String(Boolean(snmpPriv.value&&!privReady)));
 }
 function showConsoleMessage(message) {
  $('console-message').textContent = message;
@@ -54,23 +66,46 @@ function renderConsole() {
  updateSend();
 }
 function selectedUpload(){
- return routingFilter.checked&&source.noIpRoutingCount
-  ?prepareRunning(source.rawConfig,{excludeNoIpRouting:true})
-  :source;
+ const excludeNoIpRouting=Boolean(routingFilter.checked&&source.noIpRoutingCount);
+ const excludeVirtualSNMPEngineId=Boolean(snmpFilter.checked&&snmpDescription?.excludesEngineId);
+ return excludeNoIpRouting||excludeVirtualSNMPEngineId
+  ?prepareRunning(source.rawConfig,{excludeNoIpRouting,excludeVirtualSNMPEngineId}) :source;
+}
+function clearSNMPCredentials(){
+ snmpAuth.value='';
+ snmpPriv.value='';
+}
+function renderSNMP(){
+ snmpDescription=source?describeSNMP(source):null;
+ $('snmp-control').hidden=!source;
+ $('snmp-details').hidden=!snmpDescription;
+ if(!snmpDescription){
+  snmpFilter.checked=false;
+  $('snmp-details').open=false;
+  clearSNMPCredentials();
+ }
+ $('snmp-credentials').hidden=!snmpFilter.checked;
+ $('snmp-preview').textContent=snmpDescription?.lines.join('\n')||'';
+ const note=$('snmp-note');
+ if(!snmpDescription) note.textContent='Voor deze bron is geen compleet SNMPv3-profiel beschikbaar.';
+ else if(snmpFilter.checked) note.textContent='Vul de twee SNMPv3-sleutels voor dit toestel in. Gebruik per sleutel 8 tot 64 tekens met letters, cijfers, !, _ of -.'
+  +(snmpDescription.excludesEngineId?' Het fysieke Cisco-toestel behoudt zijn eigen SNMP Engine ID.':'');
+ else note.textContent='Vink aan om de Zabbix-gebruiker mee te sturen.';
 }
 function renderUploadConfig(){
  $('save-control').hidden=!source;
  $('routing-control').hidden=!source?.noIpRoutingCount;
+ renderSNMP();
  if(!source){
   $('config').textContent='';
-  document.querySelector('.config-details').open=false;
+  $('config-details').open=false;
   return;
  }
  const plan=selectedUpload();
  const filtered=plan.excludedSaveCommands.length;
  const included=saveFilter.checked?0:plan.saveCommands.length;
  const config=saveFilter.checked?plan.config:plan.configWithSaves;
- const total=plan.commands.length+included+1;
+ const total=plan.commands.length+included+1+(snmpFilter.checked?snmpDescription.operationCount:0);
  $('config').textContent=config;
  $('detail').textContent=`${new TextEncoder().encode(config).byteLength.toLocaleString('nl-BE')} bytes · ${total} consoleopdrachten · hostname ${source.hostname}`;
  if(!$('upload-progress').value)$('upload-note').textContent=`0 van ${total} consoleopdrachten, inclusief configure terminal.`;
@@ -99,7 +134,7 @@ window.addEventListener('message',e=>{
  if(e.origin!==origin||d.job!==job)return;
  if(d.type==='error'){failed(d.code==='node_not_running'?'De virtuele switch staat uit. Start hem eerst; er is geen oude config gebruikt.':'Ophalen mislukt ('+String(d.code).replace(/[^a-z_]/g,'').slice(0,50)+'). Open de knop opnieuw.');return;}
  if(d.type==='status'){phase('fetching','Running-config ophalen');$('fetch-progress').removeAttribute('value');$('fetch-value').textContent='Bezig';$('fetch-note').textContent='De switch wordt uitgelezen. Een percentage is pas bekend als de volledige config ontvangen is.';status(d.state==='credentials'?'Vul de tijdelijke exportgegevens in het GNS3-venster in.':'Actuele running-config wordt opgehaald…');return;}
- try{const data=accept?.(e);if(!data)return;source=data;ended=true;accept=null;clearTimeout(timeout);$('name').textContent=data.name;renderUploadConfig();receivedAt=Date.now();$('received-at').dateTime=new Date(receivedAt).toISOString();$('received-at').textContent=new Date(receivedAt).toLocaleTimeString('nl-BE',{hour:'2-digit',minute:'2-digit',second:'2-digit'});$('source-freshness').hidden=false;refreshAge();ageTimer=setInterval(refreshAge,30000);$('fetch-progress').value=100;$('fetch-value').textContent='100%';$('fetch-note').textContent=data.prepared?'Uploadconfig gecontroleerd; bekende labwachtwoorden in klare tekst.':'Volledige running-config ontvangen en gecontroleerd.';phase('ready','Gereed voor upload');status(data.prepared?'Uploadconfig staat klaar. Bekende labwachtwoorden gaan in klare tekst mee.':'Running-config staat klaar. Verbinden en klaarzetten doe je in de fysieke console.');if(data.prepared)document.querySelector('.config-details summary').firstChild.textContent='Uploadconfig bekijken ';$('browser-note').textContent=!serialAvailable()?'Gebruik Chrome of Edge op je laptop om via USB-console te uploaden.':!SERIAL_WRITES_ENABLED?'Verzenden is uitgeschakeld.':'De configuratie wordt pas verstuurd nadat jij de upload start.';updateSend();}catch{failed('De opgehaalde bron is geen volledige bruikbare IOS running-config. Niets verstuurd.');}
+ try{const data=accept?.(e);if(!data)return;source=data;ended=true;accept=null;clearTimeout(timeout);$('name').textContent=data.name;renderUploadConfig();receivedAt=Date.now();$('received-at').dateTime=new Date(receivedAt).toISOString();$('received-at').textContent=new Date(receivedAt).toLocaleTimeString('nl-BE',{hour:'2-digit',minute:'2-digit',second:'2-digit'});$('source-freshness').hidden=false;refreshAge();ageTimer=setInterval(refreshAge,30000);$('fetch-progress').value=100;$('fetch-value').textContent='100%';$('fetch-note').textContent=data.prepared?'Uploadconfig gecontroleerd; bekende labwachtwoorden in klare tekst.':'Volledige running-config ontvangen en gecontroleerd.';phase('ready','Gereed voor upload');status(data.prepared?'Uploadconfig staat klaar. Bekende labwachtwoorden gaan in klare tekst mee.':'Running-config staat klaar. Verbinden en klaarzetten doe je in de fysieke console.');if(data.prepared)$('config-details').querySelector('summary').firstChild.textContent='Uploadconfig bekijken ';$('browser-note').textContent=!serialAvailable()?'Gebruik Chrome of Edge op je laptop om via USB-console te uploaden.':!SERIAL_WRITES_ENABLED?'Verzenden is uitgeschakeld.':'De configuratie wordt pas verstuurd nadat jij de upload start.';updateSend();}catch{failed('De opgehaalde bron is geen volledige bruikbare IOS running-config. Niets verstuurd.');}
 });
 for(const allowed of SOURCE_ORIGINS)opener?.postMessage({type:'ready',version:1},allowed);
 if(!opener){clearTimeout(timeout);ended=true;status('Open deze pagina via Upload config bij een switch in GNS3.');}
@@ -242,6 +277,8 @@ $('send').onclick = async event => {
  const owned = session;
  const signal = (operation = new AbortController()).signal;
  const includeSaveCommands = !saveFilter.checked;
+ const snmpProfile = snmpFilter.checked ? { auth: snmpAuth.value, priv: snmpPriv.value } : undefined;
+ clearSNMPCredentials();
  busy = true;
  confirmed = 0;
  let outcome = 'done';
@@ -263,7 +300,7 @@ $('send').onclick = async event => {
    return owned.exchange(command, options);
   };
   const result = await sendIOS(selectedUpload(), exchange, {
-   signal, includeSaveCommands,
+   signal, includeSaveCommands, snmpProfile,
    onProgress(n, total) {
     confirmed = n;
     const percent = Math.floor(n / total * 100);
@@ -274,6 +311,8 @@ $('send').onclick = async event => {
   });
   message = 'Upload afgerond. ' + result.count + ' consoleopdrachten bevestigd. '
    + (result.saved ? 'Opgeslagen als startup-config.' : 'Niet opgeslagen voor herstart.');
+  if (result.snmpProfile === 'existing') message += ' Bestaande SNMP-gebruiker behouden. Controleer de uitlezing in Zabbix.';
+  if (result.snmpProfile === 'configured') message += ' SNMP-gebruiker aangemaakt. Controleer de uitlezing in Zabbix.';
   source = null;
  } catch (error) {
   outcome = signal.aborted ? 'stopped' : 'error';
@@ -315,12 +354,22 @@ function leavePage() {
  consoleInput.value = '';
  consoleOutput.textContent = '';
  $('config').textContent = '';
+ clearSNMPCredentials();
+ snmpFilter.checked=false;
+ renderSNMP();
  clearTimeout(timeout);
  clearInterval(ageTimer);
 }
 
 saveFilter.onchange = renderUploadConfig;
 routingFilter.onchange = renderUploadConfig;
+snmpFilter.onchange = () => {
+ if(!snmpFilter.checked)clearSNMPCredentials();
+ renderUploadConfig();
+ updateSend();
+};
+snmpAuth.oninput = updateSend;
+snmpPriv.oninput = updateSend;
 $('cancel').onclick = () => {
  leavePage();
  window.close();

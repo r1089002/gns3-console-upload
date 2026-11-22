@@ -11,6 +11,71 @@ const DISPLAYABLE_IOS_ERRORS=new Set([
 ]);
 const EXEC_PROMPT=/^[\w.-]+#$/;
 const CONFIG_PROMPT=/^[\w.-]+\([^\n]+\)#$/;
+const SNMP_USER='zbx2026';
+const SNMP_GROUP='ZBX2026';
+const SNMP_VIEW=`snmp-server view ${SNMP_GROUP} iso included`;
+const SNMP_ACL='ip access-list standard SNMP_ZABBIX';
+const SNMP_GROUP_LINE=`snmp-server group ${SNMP_GROUP} v3 priv read ${SNMP_GROUP} access SNMP_ZABBIX`;
+const SNMP_LOOKUP=`show snmp user ${SNMP_USER}`;
+const SNMP_ENGINE=/^(?:no[ \t]+)?snmp-server[ \t]+engineid[ \t]+local(?:[ \t]|$)/i;
+const SNMP_GROUP_DECLARATION=/^snmp-server[ \t]+group[ \t]+zbx2026(?:[ \t]|$)/i;
+const SNMP_CONFLICT=/^(?:snmp-server[ \t]+user[ \t]+zbx2026|no[ \t]+(?:snmp-server|ip[ \t]+access-list[ \t]+standard[ \t]+snmp_zabbix))(?:[ \t]|$)/i;
+const SNMP_ACL_RULE=/^(?:\d+[ \t]+)?(?:permit|deny|remark)[ \t]/i;
+const SNMP_ACL_PERMIT=/^(?:\d+[ \t]+)?permit[ \t]/i;
+
+function snmpUserCommand(auth,priv){
+ return `snmp-server user ${SNMP_USER} ${SNMP_GROUP} v3 auth sha ${auth} priv aes 128 ${priv}`;
+}
+
+export function validSNMPCredential(value){
+ return typeof value==='string'&&/^[A-Za-z0-9!_-]{8,64}$/.test(value)&&!/^change[-_]?me$/i.test(value);
+}
+
+export function describeSNMP(plan){
+ const commands=Array.isArray(plan?.commands)?plan.commands:[];
+ const groups=commands.filter(line=>SNMP_GROUP_DECLARATION.test(line));
+ const conflicts=commands.some(line=>SNMP_CONFLICT.test(line)&&!SNMP_ENGINE.test(line));
+ if(conflicts||groups.length!==1||groups[0].replace(/[ \t]+/g,' ')!==SNMP_GROUP_LINE) return null;
+ const normalized=commands.map(line=>line.replace(/[ \t]+/g,' '));
+ const view=normalized.indexOf(SNMP_VIEW);
+ const acl=normalized.indexOf(SNMP_ACL);
+ if(view<0||acl<0||normalized.lastIndexOf(SNMP_ACL)!==acl) return null;
+ const aclLines=[];
+ for(const line of commands.slice(acl+1)){
+  if(!SNMP_ACL_RULE.test(line)) break;
+  aclLines.push(line);
+ }
+ if(!aclLines.some(line=>SNMP_ACL_PERMIT.test(line))) return null;
+ return {
+  lines:[commands[view],groups[0],commands[acl],...aclLines.map(line=>' '+line),snmpUserCommand('[afgeschermd]','[afgeschermd]')],
+  operationCount:3,
+  excludesEngineId:plan.snmpEngineIdCount>0||commands.some(line=>SNMP_ENGINE.test(line)),
+ };
+}
+
+async function readSNMPUser(exchange,prompt){
+ const message='Het SNMP-profiel op het fysieke toestel kon niet veilig worden bevestigd.';
+ let reply;
+ try{reply=await exchange(SNMP_LOOKUP);}catch{throw Error(message);}
+ if(typeof reply!=='string')throw Error(message);
+ const lines=reply.replace(/\r/g,'\n').split('\n').map(line=>line.trim()).filter(Boolean);
+ if(lines.pop()!==prompt)throw Error(message);
+ const echo=lines.shift();
+ if(echo!==SNMP_LOOKUP&&!(echo?.startsWith(prompt)&&echo.slice(prompt.length).trimStart()===SNMP_LOOKUP))throw Error(message);
+ if(!lines.length) return 'missing';
+ const fields=new Map();
+ for(const line of lines){
+  const match=/^(user name|engine id|storage-type|authentication protocol|privacy protocol|group[- ]name|rowstatus):[ \t]*(.+)$/i.exec(line);
+  const key=match?.[1].toLowerCase().replace('-', ' ');
+  if(!key||fields.has(key))throw Error(message);
+  fields.set(key,match[2]);
+ }
+ if(fields.get('user name')!==SNMP_USER||fields.get('group name')!==SNMP_GROUP||
+    !/^(?:0x)?[a-f0-9]+$/i.test(fields.get('engine id'))||!/^nonvolatile[ \t]+active$/i.test(fields.get('storage type'))||
+    !/^sha(?:-?1)?$/i.test(fields.get('authentication protocol'))||!/^aes[- ]?128$/i.test(fields.get('privacy protocol'))||
+    (fields.has('rowstatus')&&!/^active$/i.test(fields.get('rowstatus')))) throw Error(message);
+ return 'matching';
+}
 
 function prefix(value,command){return Boolean(value)&&command.startsWith(value);}
 function words(line){return line.replace(/\?/g,'').trim().toLowerCase().split(/\s+/);}
@@ -42,7 +107,7 @@ function endsInConfigEnd(commands){
  return commands.at(-1)==='end'&&commands.findIndex(command=>words(command)[0]==='end')===commands.length-1;
 }
 
-export function prepareRunning(raw,{excludeNoIpRouting=false}={}){
+export function prepareRunning(raw,{excludeNoIpRouting=false,excludeVirtualSNMPEngineId=false}={}){
  if(typeof raw!=='string'||raw.length>2*1024*1024||INVALID_WIRE_CHAR.test(raw.replace(/\r/g,'')))throw Error('Geen geldige tekstconfig ontvangen.');
  if(/^\s*</.test(raw)||/\b(?:MASKED|REDACTED|CHANGEME)\b|<(?:PASSWORD|SECRET|COMMUNITY|SNMP[^>]*)>/i.test(raw))throw Error('Dit is XML, een template of een gemaskeerde export.');
  const lines=raw.replace(/\r\n?/g,'\n').split('\n');let i=0;
@@ -51,6 +116,7 @@ export function prepareRunning(raw,{excludeNoIpRouting=false}={}){
  const commands=[],saveCommands=[],excludedSaveCommands=[];
  const excludedLines=new Set(),excludedLinesWithSaves=new Set();
  const noIpRoutingCommands=new Set();
+ const snmpEngineIdCommands=new Set();
  let hostname=null;
  for(;i<lines.length;i++){
   const line=lines[i].trim();if(!line||line.startsWith('!'))continue;
@@ -71,6 +137,10 @@ export function prepareRunning(raw,{excludeNoIpRouting=false}={}){
     excludedLinesWithSaves.add(i);
    }
   }
+  if(SNMP_ENGINE.test(line)){
+   snmpEngineIdCommands.add(commands.length);
+   if(excludeVirtualSNMPEngineId){excludedLines.add(i);excludedLinesWithSaves.add(i);}
+  }
   if(savesConfiguration(line)){
    excludedSaveCommands.push(line);
    excludedLines.add(i);
@@ -84,22 +154,25 @@ export function prepareRunning(raw,{excludeNoIpRouting=false}={}){
   commands.push(line);
  }
  if(!hostname||!endsInConfigEnd(commands))throw Error('De running-config heeft geen geldige afsluiting.');
- const uploadCommands=excludeNoIpRouting?commands.filter((_,index)=>!noIpRoutingCommands.has(index)):commands;
+ const uploadCommands=commands.filter((_,index)=>!(excludeNoIpRouting&&noIpRoutingCommands.has(index))&&
+  !(excludeVirtualSNMPEngineId&&snmpEngineIdCommands.has(index)));
  const config=excludedLines.size?lines.filter((_,index)=>!excludedLines.has(index)).join('\n'):raw;
  const configWithSaves=excludedLinesWithSaves.size?lines.filter((_,index)=>!excludedLinesWithSaves.has(index)).join('\n'):raw;
  return {
   hostname,commands:uploadCommands,config,configWithSaves,saveCommands,excludedSaveCommands,
-  noIpRoutingCount:noIpRoutingCommands.size,bytes:new TextEncoder().encode(raw).byteLength,
+  noIpRoutingCount:noIpRoutingCommands.size,snmpEngineIdCount:snmpEngineIdCommands.size,bytes:new TextEncoder().encode(raw).byteLength,
  };
 }
-export async function sendIOS(plan,exchange,{signal,includeSaveCommands=false,onProgress=()=>{}}={}){
- const commands=Array.isArray(plan?.commands)?[...plan.commands]:[];
+export async function sendIOS(plan,exchange,{signal,includeSaveCommands=false,snmpProfile,onProgress=()=>{}}={}){
+ const commands=Array.isArray(plan?.commands)?plan.commands.filter(line=>!snmpProfile||!SNMP_ENGINE.test(line)):[];
  if(!commands.every(validUploadCommand)||!endsInConfigEnd(commands))throw Error('De upload bevat een geblokkeerde of onvolledige opdracht.');
+ if(snmpProfile&&(!describeSNMP(plan)||!validSNMPCredential(snmpProfile.auth)||!validSNMPCredential(snmpProfile.priv))){
+  throw Error('Het SNMP-profiel of de ingevulde sleutels zijn ongeldig.');
+ }
  const saves=includeSaveCommands===true?plan.saveCommands:[];
  if(!Array.isArray(saves)||!saves.every(command=>SUPPORTED_SAVE_COMMANDS.has(command)))throw Error('De upload bevat een onbekende opslagopdracht.');
  const saveCommands=[...saves];
  const send=['configure terminal',...commands];
- const total=send.length+saveCommands.length;
  let count=0;const check=()=>{if(signal?.aborted)throw Error(`Afgebroken na ${count} opdrachten. Eerdere regels kunnen al actief zijn.`);};
  check();
  const initial=await exchange('\r');
@@ -107,16 +180,43 @@ export async function sendIOS(plan,exchange,{signal,includeSaveCommands=false,on
  if(/^[\w.-]+>$/.test(prompt))throw Error('De switch staat op een IOS-prompt met >. Typ enable in de fysieke console tot je de gewone #‑prompt ziet.');
  if(CONFIG_PROMPT.test(prompt))throw Error('De console staat in een configuratiemodus. Typ end in de fysieke console tot je de gewone #‑prompt ziet.');
  if(!EXEC_PROMPT.test(prompt))throw Error('Het fysieke toestel moet op een normale IOS-prompt met # staan. Controleer de gekozen COM-poort en de aanmelding.');
- for(const command of send){
-  check();const reply=await exchange(command);
+ let addUser=false;
+ if(snmpProfile){check();addUser=await readSNMPUser(exchange,prompt)==='missing';}
+ const total=send.length+saveCommands.length+(addUser?3:0);
+ async function sendCommand(command,{exactPrompt,sensitive=false}={}){
+  check();
+  let reply;
+  try{reply=await exchange(command);}catch(error){
+   if(sensitive)throw Error(`De SNMP-gebruikersregel kon niet worden bevestigd bij opdracht ${count+1}.`);
+   throw error;
+  }
   if(IOS_ERROR.test(reply)){
    const label=DISPLAYABLE_IOS_ERRORS.has(command)?` (${command})`:'';
+   if(sensitive)throw Error(`IOS weigerde de SNMP-gebruikersregel bij opdracht ${count+1}.`);
    throw Error(`IOS weigerde opdracht ${count+1}${label}.`);
   }
   const tail=reply.replace(/\r/g,'\n').trimEnd().split('\n').at(-1)||'';
   const expectedPrompt=command==='end'?EXEC_PROMPT:CONFIG_PROMPT;
-  if(!expectedPrompt.test(tail))throw Error(`Onverwachte IOS-prompt na opdracht ${count+1}. Gestopt zonder herhaling.`);
+  if(!expectedPrompt.test(tail)||(exactPrompt&&tail!==exactPrompt)){
+   if(sensitive)throw Error(`Onverwachte IOS-prompt bij de SNMP-gebruikersregel ${count+1}.`);
+   throw Error(`Onverwachte IOS-prompt na opdracht ${count+1}. Gestopt zonder herhaling.`);
+  }
   count++;onProgress(count,total);
+  return tail;
+ }
+ let tail=prompt;
+ for(const command of send)tail=await sendCommand(command);
+ if(snmpProfile){
+  if(tail!==`${plan.hostname}#`)throw Error('De ingestelde hostname kon niet worden bevestigd voor het SNMP-profiel.');
+  if(addUser){
+   const configPrompt=`${tail.slice(0,-1)}(config)#`;
+   await sendCommand('configure terminal',{exactPrompt:configPrompt});
+   await sendCommand(snmpUserCommand(snmpProfile.auth,snmpProfile.priv),{exactPrompt:configPrompt,sensitive:true});
+   await sendCommand('end',{exactPrompt:tail});
+  }
+  check();
+  if(await readSNMPUser(exchange,tail)!=='matching')throw Error('De SNMP-gebruikersregel werd achteraf niet bevestigd. Controleer de fysieke console.');
+  check();
  }
  for(const command of saveCommands){
   check();
@@ -132,6 +232,6 @@ export async function sendIOS(plan,exchange,{signal,includeSaveCommands=false,on
   }
   count++;onProgress(count,total);
  }
- return {count,saved:saveCommands.length>0};
+ return {count,saved:saveCommands.length>0,...(snmpProfile?{snmpProfile:addUser?'configured':'existing'}:{})};
 }
 export function receiver(origin,source,job){let used=false;return event=>{const d=event.data;if(used||!source||event.source!==source||event.origin!==origin||d?.version!==1||d.type!=='running'||d.job!==job||typeof d.name!=='string'||d.name.length>100)return null;const plan=prepareRunning(d.config);used=true;return {...plan,rawConfig:d.config,name:d.name,prepared:d.prepared===true};};}

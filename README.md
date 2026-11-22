@@ -14,6 +14,12 @@ Bij een geslaagde overdracht of een IOS-weigering blijft de verbinding open voor
 
 **L2-switch: no ip routing weglaten** verschijnt als de bron die zelfstandige IOS-opdracht bevat. Het vinkje staat bij elke nieuwe uploadpagina uit. Aanvinken verwijdert die opdracht uit het uploadvoorbeeld, de totaaltelling en de fysieke overdracht. Het opslagfilter werkt onafhankelijk.
 
+## SNMP-profiel voor Zabbix
+
+Bij een Cisco-bron met de Zabbix-view, groep en beheer-ACL kun je **SNMP profiel** aanvinken. Open **SNMP-regels bekijken** om de regels te controleren. Vul de authenticatie- en encryptiesleutel van deze Zabbix-host in de twee wachtwoordvelden in. De uploader gebruikt ze lokaal voor de seriële overdracht en schermt ze af in het voorbeeld en de console.
+
+De uploader controleert eerst de SNMPv3-gebruiker op het fysieke toestel. Hij behoudt een passend account of maakt de ontbrekende gebruiker na de gewone configuratie aan. Het fysieke toestel behoudt zijn eigen Engine ID. De gebruiker wordt vóór eventuele opslag opnieuw via de console gecontroleerd. Controleer de werkelijke uitlezing daarna in Zabbix.
+
 ## Palo Alto via USB-console
 
 De GNS3-knop bij FW-NY en FW-BRU opent `palo-upload.html`. Verbind de USB-console, meld je aan, controleer het fysieke toestel en zet vooraf beoordeelde PAN-OS-`set`-opdrachten klaar vanuit een lokaal tekstbestand of het invoervak. De pagina verifieert het gekozen toestel opnieuw en controleert de candidate voordat ze de commando’s verstuurt.
