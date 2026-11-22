@@ -2,11 +2,13 @@
 
 Statische HTTPS-pagina voor de menuactie **Upload config** bij Cisco-switches in GNS3. Open via GNS3; los openen bevat geen bronconfig.
 
-## Handmatige fysieke upload
+## Fysieke console en upload
 
-De gebruiker heeft fysieke verzending vrijgegeven (`SERIAL_WRITES_ENABLED=true`). Een geldige actuele running-config en een expliciete klik op **Upload naar switch** zijn vereist. Daarna kiest de gebruiker de seriële poort in de browser. Geen poort wordt automatisch geopend bij laden of ontvangen van de bron. Chrome of Edge op een laptop met Web Serial vereist. Standaard 9600 baud; 115200 is instelbaar. De fysieke switch staat vooraf al aangemeld op een normale Cisco IOS # prompt. PuTTY moet de poort vrijlaten.
+Gebruik Chrome of Edge op de laptop met de USB-consolekabel. Sluit PuTTY en kies bij **Fysieke console** de juiste snelheid (standaard 9600 baud). Klik op **Verbinden** en selecteer de COM-poort. De verbinding opent zonder bytes te versturen. Druk zelf op **Enter** om de prompt op te vragen. Gebruik `show version` om het toestel te controleren, `enable` om van `>` naar `#` te gaan en `end` om configuratiemodus te verlaten. De terminal biedt ook spatie bij `--More--` en Ctrl+C.
 
-De uploader stopt bij IOS-fouten, een ontbrekende prompt of verbindingsverlies. Zolang alleen de promptcontrole is uitgevoerd, blijft de klaargezette configuratie beschikbaar om handmatig opnieuw te proberen na vrijgave van de COM-poort. Bij een prompt met `>` gebruik je zelf `enable` en in configuratiemodus gebruik je `end`. Na een poging die `configure terminal` heeft bereikt, vraagt de uploader bij een fout om de fysieke console te controleren en de pagina opnieuw te openen.
+Een geldige GNS3-bronconfig, de gewone IOS-`#`-prompt en een klik op **Upload naar switch** starten de overdracht. De uploader controleert de prompt opnieuw op dezelfde COM-verbinding en vergrendelt de invoer zolang hij zelf schrijft. De console toont veilige IOS-antwoorden en foutmeldingen live. Willekeurige teruggekaatste configuratieregels en geheime wachtwoordinvoer worden afgeschermd.
+
+Bij een geslaagde overdracht of een IOS-weigering blijft de verbinding open voor handmatige controle. Wie opnieuw wil uploaden nadat `configure terminal` is aangeboden, opent een nieuwe bron via GNS3. **Verbreken** sluit de verbinding. **Upload stoppen**, een I/O-time-out of verlies van de poort sluit de verbinding en bewaakt de vrijgave.
 
 **Opslagopdrachten uit de config filteren** staat standaard aangevinkt. Uitvinken neemt `write memory` en `copy running-config startup-config` mee als deze in de opgehaalde bron staan. De uploader voert ze na `end` uit, zodat de fysieke switch de configuratie ook voor een herstart bewaart. Andere opslagvarianten blijven gefilterd.
 
@@ -22,7 +24,7 @@ De GNS3-bron gebruikt nog de bestaande HTTP/LAN/VPN-route; HTTPS-hosting beveili
 
 ## Testgrens
 
-De geactiveerde UI is met fictieve bronconfig en volledig vervangen seriële browser-API getest. De ontwikkelaar heeft bij deze vrijgave geen echte COM-poort geopend en niets naar fysieke apparatuur verstuurd. Een eerdere proef bevestigde echte GNS3-configontvangst zonder fysieke verzending. De echte fysieke upload moet de gebruiker zelf testen.
+De geactiveerde UI is met een fictieve bronconfig en een gesimuleerde switch getest via Web Serial in Chrome. Fysieke USB-seriële tests vallen buiten deze test.
 
 ## Voorbereide labconfig
 

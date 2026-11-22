@@ -91,8 +91,8 @@ export async function sendIOS(plan,exchange,{signal,includeSaveCommands=false,on
  check();
  const initial=await exchange('\r');
  const prompt=initial.replace(/\r/g,'\n').trimEnd().split('\n').at(-1);
- if(/^[\w.-]+>$/.test(prompt))throw Error('De switch staat op een IOS-prompt met >. Typ enable in je consoleprogramma tot je # ziet en sluit dat programma voor je opnieuw uploadt.');
- if(CONFIG_PROMPT.test(prompt))throw Error('De console staat in een configuratiemodus. Typ end in je consoleprogramma tot je de gewone # ziet en sluit dat programma voor je opnieuw uploadt.');
+ if(/^[\w.-]+>$/.test(prompt))throw Error('De switch staat op een IOS-prompt met >. Typ enable in de fysieke console tot je de gewone #‑prompt ziet.');
+ if(CONFIG_PROMPT.test(prompt))throw Error('De console staat in een configuratiemodus. Typ end in de fysieke console tot je de gewone #‑prompt ziet.');
  if(!EXEC_PROMPT.test(prompt))throw Error('Het fysieke toestel moet op een normale IOS-prompt met # staan. Controleer de gekozen COM-poort en de aanmelding.');
  for(const command of send){
   check();const reply=await exchange(command);

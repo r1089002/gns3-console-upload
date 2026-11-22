@@ -1,18 +1,62 @@
 import {SERIAL_WRITES_ENABLED,SOURCE_ORIGINS} from './upload-settings.mjs?v=20261028-3';
-import {receiver,sendIOS} from './upload-core.mjs?v=20261119-4';
-import {SerialSession,serialErrorMessage} from './upload-serial.mjs?v=20261119-2';
+import {receiver,sendIOS} from './upload-core.mjs?v=20261122-1';
+import {SerialSession,serialErrorMessage} from './upload-serial.mjs?v=20261122-1';
+import {ConsoleTranscript} from './upload-terminal.mjs?v=20261122-1';
 const $=id=>document.getElementById(id);let job=null,origin=null,accept=null,source=null,session=null,cleanupPending=false,ended=false,busy=false,operation=null,confirmed=0,receivedAt=null,ageTimer=null,ageMinute=-1;
 const saveFilter=$('hide-save-commands');
+const consoleInput = $('console-input');
+const consoleOutput = $('console-output');
+const consoleStates = {
+ closed: 'Verbroken', choosing: 'Poort kiezen', opening: 'Verbinden',
+ open: 'Verbonden', closing: 'Poort vrijgeven', blocked: 'Poortstatus onbekend'
+};
+let consoleState = 'closed';
+let transcript = new ConsoleTranscript();
+let writingManually = false;
+let leaving = false;
 const serialAvailable=()=>!!navigator.serial&&isSecureContext;
 function status(value){$('status').textContent=value;}
 function phase(value,label){$('app').dataset.phase=value;$('phase-badge').textContent=label;const step=value==='fetching'||value==='waiting'?'fetch':value==='ready'?'ready':value==='error'&&$('fetch-progress').value<100?'fetch':'upload';for(const key of ['fetch','ready','upload']){const el=$('step-'+key);el.toggleAttribute('data-active',key===step);if(key===step)el.setAttribute('aria-current','step');else el.removeAttribute('aria-current');}}
 function updateSend(){
- $('send').disabled=!SERIAL_WRITES_ENABLED||!serialAvailable()||!source||busy||cleanupPending;
+ $('send').disabled=!SERIAL_WRITES_ENABLED||!serialAvailable()||!source||busy||cleanupPending||writingManually||consoleState!=='open'||!transcript.ready;
  saveFilter.disabled=busy||cleanupPending;
+}
+function showConsoleMessage(message) {
+ $('console-message').textContent = message;
+}
+function renderConsole() {
+ const open = consoleState === 'open';
+ const manual = open && !busy && !writingManually;
+ $('app').dataset.portState = consoleState;
+ $('console-state').textContent = consoleStates[consoleState];
+ $('console-mode').textContent = busy && open ? 'Upload bestuurt de console' : open ? 'Handmatige invoer' : '';
+ $('console-connect').textContent = open ? 'Verbreken' : 'Verbinden';
+ $('console-connect').disabled = !SERIAL_WRITES_ENABLED || !serialAvailable() || busy ||
+  writingManually || (consoleState !== 'closed' && !open);
+ $('baud').disabled = consoleState !== 'closed';
+ const maskInput = transcript.password || (consoleInput.type === 'password' && consoleInput.value !== '');
+ $('console-prompt').textContent = maskInput ? 'Password:' : transcript.prompt || '—';
+ consoleInput.type = maskInput ? 'password' : 'text';
+ consoleInput.disabled = !manual || transcript.more;
+ $('console-enter').disabled = consoleInput.disabled;
+ $('console-interrupt').disabled = !manual;
+ $('console-more').hidden = !open || busy || !transcript.more;
+ $('console-more').disabled = !manual;
+ const output = transcript.text;
+ if (consoleOutput.textContent !== output) {
+  const follow = consoleOutput.scrollHeight - consoleOutput.scrollTop - consoleOutput.clientHeight < 30;
+  consoleOutput.textContent = output;
+  if (follow) consoleOutput.scrollTop = consoleOutput.scrollHeight;
+ }
+ updateSend();
 }
 function renderUploadConfig(){
  $('save-control').hidden=!source;
- if(!source)return;
+ if(!source){
+  $('config').textContent='';
+  document.querySelector('.config-details').open=false;
+  return;
+ }
  const filtered=source.excludedSaveCommands.length;
  const included=saveFilter.checked?0:source.saveCommands.length;
  const config=saveFilter.checked?source.config:source.configWithSaves;
@@ -39,34 +83,230 @@ window.addEventListener('message',e=>{
  if(e.origin!==origin||d.job!==job)return;
  if(d.type==='error'){failed(d.code==='node_not_running'?'De virtuele switch staat uit. Start hem eerst; er is geen oude config gebruikt.':'Ophalen mislukt ('+String(d.code).replace(/[^a-z_]/g,'').slice(0,50)+'). Open de knop opnieuw.');return;}
  if(d.type==='status'){phase('fetching','Running-config ophalen');$('fetch-progress').removeAttribute('value');$('fetch-value').textContent='Bezig';$('fetch-note').textContent='De switch wordt uitgelezen. Een percentage is pas bekend als de volledige config ontvangen is.';status(d.state==='credentials'?'Vul de tijdelijke exportgegevens in het GNS3-venster in.':'Actuele running-config wordt opgehaald…');return;}
- try{const data=accept?.(e);if(!data)return;source=data;ended=true;accept=null;clearTimeout(timeout);$('name').textContent=data.name;renderUploadConfig();receivedAt=Date.now();$('received-at').dateTime=new Date(receivedAt).toISOString();$('received-at').textContent=new Date(receivedAt).toLocaleTimeString('nl-BE',{hour:'2-digit',minute:'2-digit',second:'2-digit'});$('source-freshness').hidden=false;refreshAge();ageTimer=setInterval(refreshAge,30000);$('fetch-progress').value=100;$('fetch-value').textContent='100%';$('fetch-note').textContent=data.prepared?'Uploadconfig gecontroleerd; bekende labwachtwoorden in klare tekst.':'Volledige running-config ontvangen en gecontroleerd.';phase('ready','Gereed voor upload');status(data.prepared?'Uploadconfig staat klaar. Bekende labwachtwoorden gaan in klare tekst mee.':'Running-config staat klaar. Kies je COM-poort wanneer je wilt uploaden.');if(data.prepared)document.querySelector('.config-details summary').firstChild.textContent='Uploadconfig bekijken ';$('browser-note').textContent=!serialAvailable()?'Gebruik Chrome of Edge op je laptop om via USB-console te uploaden.':!SERIAL_WRITES_ENABLED?'Verzenden is uitgeschakeld.':'Er wordt pas iets verstuurd nadat jij de upload start.';updateSend();}catch{failed('De opgehaalde bron is geen volledige bruikbare IOS running-config. Niets verstuurd.');}
+ try{const data=accept?.(e);if(!data)return;source=data;ended=true;accept=null;clearTimeout(timeout);$('name').textContent=data.name;renderUploadConfig();receivedAt=Date.now();$('received-at').dateTime=new Date(receivedAt).toISOString();$('received-at').textContent=new Date(receivedAt).toLocaleTimeString('nl-BE',{hour:'2-digit',minute:'2-digit',second:'2-digit'});$('source-freshness').hidden=false;refreshAge();ageTimer=setInterval(refreshAge,30000);$('fetch-progress').value=100;$('fetch-value').textContent='100%';$('fetch-note').textContent=data.prepared?'Uploadconfig gecontroleerd; bekende labwachtwoorden in klare tekst.':'Volledige running-config ontvangen en gecontroleerd.';phase('ready','Gereed voor upload');status(data.prepared?'Uploadconfig staat klaar. Bekende labwachtwoorden gaan in klare tekst mee.':'Running-config staat klaar. Verbinden en klaarzetten doe je in de fysieke console.');if(data.prepared)document.querySelector('.config-details summary').firstChild.textContent='Uploadconfig bekijken ';$('browser-note').textContent=!serialAvailable()?'Gebruik Chrome of Edge op je laptop om via USB-console te uploaden.':!SERIAL_WRITES_ENABLED?'Verzenden is uitgeschakeld.':'De configuratie wordt pas verstuurd nadat jij de upload start.';updateSend();}catch{failed('De opgehaalde bron is geen volledige bruikbare IOS running-config. Niets verstuurd.');}
 });
 for(const allowed of SOURCE_ORIGINS)opener?.postMessage({type:'ready',version:1},allowed);
 if(!opener){clearTimeout(timeout);ended=true;status('Open deze pagina via Upload config bij een switch in GNS3.');}
-function stopOperation(){operation?.abort();session?.stop();}
-function closeNote(result){return result.complete?'':result.pending?' De COM-poort wordt nog vrijgegeven; wacht met opnieuw verbinden.':' Het sluiten van de COM-poort kon niet worden bevestigd. Controleer de kabel en sluit dit venster.';}
-$('send').onclick=async event=>{
- if(!event.isTrusted||!SERIAL_WRITES_ENABLED||!source||busy||cleanupPending||!serialAvailable())return;
- const includeSaveCommands=!saveFilter.checked;
- busy=true;confirmed=0;operation=new AbortController();const signal=operation.signal;let owned=null,outcome='done',message='',configurationStarted=false;updateSend();$('baud').disabled=true;$('stop').hidden=true;$('browser-note').textContent='';$('app').dataset.portState='choosing';phase('uploading','COM-poort kiezen');status('Kies de consolepoort van jouw fysieke switch. Annuleren kan in het browservenster.');
- try{
-  const chosen=await navigator.serial.requestPort();if(signal.aborted)throw Error('Afgebroken.');owned=new SerialSession(chosen);session=owned;$('stop').hidden=false;$('app').dataset.portState='opening';phase('uploading','Console openen');status('Consoleverbinding openen…');
-  await owned.open({baudRate:Number($('baud').value),dataBits:8,stopBits:1,parity:'none',flowControl:'none'});$('app').dataset.portState='open';phase('uploading','Upload actief');status('Console controleren en configuratie overdragen…');
-  const exchange=(command,options)=>{
-   if(command==='configure terminal')configurationStarted=true;
-   return owned.exchange(command,options);
-  };
-  const result=await sendIOS(source,exchange,{signal,includeSaveCommands,onProgress:(n,total)=>{confirmed=n;const percent=Math.floor(n/total*100);$('upload-progress').value=percent;$('upload-value').textContent=percent+'%';$('upload-note').textContent=`${n} van ${total} consoleopdrachten door de switch beantwoord.`;}});message=`Upload afgerond. ${result.count} consoleopdrachten bevestigd. ${result.saved?'Opgeslagen als startup-config.':'Niet opgeslagen voor herstart.'}`;source=null;
- }catch(error){
-  if(!signal.aborted&&!owned?.wrote&&error.name==='NotFoundError'){outcome='ready';message=serialErrorMessage(error);}
-  else{outcome=signal.aborted?'stopped':'error';message=(signal.aborted?'Upload gestopt.':serialErrorMessage(error))+` ${confirmed} consoleopdrachten bevestigd.`+(configurationStarted?' Eerdere regels kunnen al actief zijn. Controleer de fysieke console voordat je opnieuw begint.':' Er is geen configuratie verstuurd.');if(configurationStarted)source=null;}
- }finally{
-  const closed=owned?await owned.close():{complete:true};cleanupPending=!closed.complete;busy=false;$('stop').hidden=true;$('baud').disabled=cleanupPending;$('app').dataset.portState=closed.complete?'closed':closed.pending?'closing':'unknown';phase(outcome,outcome==='done'?'Upload voltooid':outcome==='ready'?'Gereed voor upload':outcome==='stopped'?'Gestopt':'Upload onderbroken');status(message+closeNote(closed));renderUploadConfig();updateSend();if(outcome==='done'){$('upload-progress').value=100;$('upload-value').textContent='100%';}
-  if(closed.complete){if(session===owned)session=null;}
-  else owned.closed.then(late=>{if(session!==owned)return;cleanupPending=!late.complete;$('baud').disabled=cleanupPending;$('app').dataset.portState=late.complete?'closed':'unknown';status(message+closeNote(late));if(late.complete)session=null;updateSend();});
+function finishConsoleClose(owned, result, message) {
+ if (session !== owned) return;
+ cleanupPending = !result.complete;
+ consoleState = result.complete ? 'closed' : result.pending ? 'closing' : 'blocked';
+ if (result.complete) session = null;
+ const explanation = result.complete ? '' : result.pending
+  ? ' De COM-poort wordt nog vrijgegeven.'
+  : ' Het sluiten van de COM-poort kon niet worden bevestigd. Controleer de kabel en sluit dit venster.';
+ showConsoleMessage(message + explanation);
+ renderConsole();
+}
+
+async function closeConsole(owned, message) {
+ if (session !== owned || consoleState === 'closing' || consoleState === 'blocked') return;
+ consoleState = 'closing';
+ cleanupPending = true;
+ consoleInput.value = '';
+ renderConsole();
+ const result = await owned.close();
+ finishConsoleClose(owned, result, message);
+ if (result.pending) void owned.closed.then(late => finishConsoleClose(owned, late, message));
+}
+
+function showPromptHint() {
+ if (transcript.password) showConsoleMessage('Voer het wachtwoord voor de fysieke console in.');
+ else if (transcript.more) showConsoleMessage('Klik op Volgende pagina of onderbreek de uitvoer.');
+ else if (transcript.question) showConsoleMessage('Lees eerst de IOS-vraag in de console en geef bewust antwoord.');
+ else if (transcript.prompt.endsWith('>')) showConsoleMessage('Typ enable om naar de gewone #‑prompt te gaan.');
+ else if (transcript.prompt && !transcript.ready) showConsoleMessage('Typ end om naar de gewone #‑prompt te gaan.');
+ else if (transcript.ready) showConsoleMessage('De fysieke switch staat op de gewone #‑prompt.');
+ else showConsoleMessage('Druk op Enter om de prompt op te vragen.');
+}
+
+$('console-connect').onclick = async event => {
+ if (!event.isTrusted || !SERIAL_WRITES_ENABLED || !serialAvailable() || busy || writingManually || leaving) return;
+ if (consoleState === 'open') {
+  await closeConsole(session, 'Consoleverbinding verbroken.');
+  return;
+ }
+ if (consoleState !== 'closed') return;
+
+ const baudRate = Number($('baud').value);
+ consoleState = 'choosing';
+ showConsoleMessage('Kies de USB-consolepoort van je fysieke switch.');
+ renderConsole();
+ let owned;
+ try {
+  const port = await navigator.serial.requestPort();
+  if (leaving) return;
+  transcript = new ConsoleTranscript();
+  consoleInput.value = '';
+  owned = new SerialSession(port, {
+   onData(value) {
+    if (session !== owned || leaving || !['opening', 'open'].includes(consoleState)) return;
+    transcript.feed(value);
+    if (consoleState === 'open' && !busy) showPromptHint();
+    renderConsole();
+   },
+   onDisconnect(error) {
+    if (session !== owned || leaving) return;
+    void closeConsole(owned, serialErrorMessage(error));
+   }
+  });
+  session = owned;
+  consoleState = 'opening';
+  showConsoleMessage('USB-console openen…');
+  renderConsole();
+  await owned.open({baudRate, dataBits:8, stopBits:1, parity:'none', flowControl:'none'});
+  if (session !== owned || consoleState !== 'opening' || leaving) return;
+  consoleState = 'open';
+  showPromptHint();
+  renderConsole();
+  consoleInput.focus();
+ } catch (error) {
+  if (leaving) return;
+  const message = serialErrorMessage(error);
+  if (owned) await closeConsole(owned, message);
+  else {
+   consoleState = 'closed';
+   showConsoleMessage(message);
+   renderConsole();
+  }
  }
 };
-$('stop').onclick=()=>{stopOperation();status('Stoppen… de actieve consolebewerking wordt afgebroken.');};
-saveFilter.onchange=renderUploadConfig;
-$('cancel').onclick=()=>{stopOperation();source=null;$('config').textContent='';renderUploadConfig();clearInterval(ageTimer);void session?.close();window.close();};
-window.addEventListener('pagehide',()=>{stopOperation();source=null;accept=null;clearTimeout(timeout);clearInterval(ageTimer);void session?.close();});
+
+async function writeManual(value, input = '', password = false) {
+ if (consoleState !== 'open' || busy || writingManually || leaving || !session) return;
+ const owned = session;
+ writingManually = true;
+ transcript.beginInput(input, {password});
+ consoleInput.value = '';
+ renderConsole();
+ try {
+  await owned.sendInput(value);
+ } catch (error) {
+  if (consoleState === 'open') await closeConsole(owned, serialErrorMessage(error));
+ } finally {
+  writingManually = false;
+  if (session === owned && consoleState === 'open') {
+   if (transcript.prompt || transcript.password || transcript.more || transcript.question) showPromptHint();
+   else showConsoleMessage('Wachten op antwoord van de fysieke console.');
+  }
+  renderConsole();
+  if (!consoleInput.disabled) consoleInput.focus();
+ }
+}
+
+function submitManual() {
+ if (consoleInput.disabled) return;
+ const input = consoleInput.value;
+ void writeManual(input + '\r', input, consoleInput.type === 'password');
+}
+$('console-form').onsubmit = event => event.preventDefault();
+$('console-enter').onclick = event => {
+ if (event.isTrusted) submitManual();
+};
+$('console-more').onclick = event => {
+ if (event.isTrusted && transcript.more) void writeManual(' ');
+};
+$('console-interrupt').onclick = event => {
+ if (event.isTrusted) void writeManual('\x03');
+};
+consoleInput.onkeydown = event => {
+ if (!event.isTrusted || event.isComposing) return;
+ if (event.key === 'Enter') {
+  event.preventDefault();
+  submitManual();
+ } else if (event.ctrlKey && !event.altKey && !event.metaKey &&
+  event.key.toLowerCase() === 'c' && consoleInput.selectionStart === consoleInput.selectionEnd) {
+  event.preventDefault();
+  void writeManual('\x03');
+ }
+};
+
+$('send').onclick = async event => {
+ if (!event.isTrusted || $('send').disabled || !session || !source || leaving) return;
+ const owned = session;
+ const signal = (operation = new AbortController()).signal;
+ const includeSaveCommands = !saveFilter.checked;
+ busy = true;
+ confirmed = 0;
+ let outcome = 'done';
+ let message;
+ let configurationStarted = false;
+ consoleInput.value = '';
+ transcript.beginUpload(source.hostname);
+ $('upload-progress').value = 0;
+ $('upload-value').textContent = '0%';
+ $('stop').hidden = false;
+ phase('uploading', 'Upload actief');
+ status('Console controleren en configuratie overdragen…');
+ showConsoleMessage('Je kunt de antwoorden volgen. Handmatige invoer komt na de upload terug.');
+ renderConsole();
+
+ try {
+  const exchange = (command, options) => {
+   if (command === 'configure terminal') configurationStarted = true;
+   return owned.exchange(command, options);
+  };
+  const result = await sendIOS(source, exchange, {
+   signal, includeSaveCommands,
+   onProgress(n, total) {
+    confirmed = n;
+    const percent = Math.floor(n / total * 100);
+    $('upload-progress').value = percent;
+    $('upload-value').textContent = percent + '%';
+    $('upload-note').textContent = n + ' van ' + total + ' consoleopdrachten door de switch beantwoord.';
+   }
+  });
+  message = 'Upload afgerond. ' + result.count + ' consoleopdrachten bevestigd. '
+   + (result.saved ? 'Opgeslagen als startup-config.' : 'Niet opgeslagen voor herstart.');
+  source = null;
+ } catch (error) {
+  outcome = signal.aborted ? 'stopped' : 'error';
+  message = (signal.aborted ? 'Upload gestopt.' : serialErrorMessage(error))
+   + ' ' + confirmed + ' consoleopdrachten bevestigd.'
+   + (configurationStarted ? ' Eerdere regels kunnen al actief zijn. Controleer de fysieke console voordat je opnieuw begint.' : ' Er is geen configuratie verstuurd.');
+  if (configurationStarted) source = null;
+ } finally {
+  transcript.endUpload();
+  busy = false;
+  operation = null;
+  $('stop').hidden = true;
+  if (!leaving) {
+   phase(outcome, outcome === 'done' ? 'Upload voltooid' : outcome === 'stopped' ? 'Gestopt' : 'Upload onderbroken');
+   status(message);
+   if (consoleState === 'open') showPromptHint();
+   renderUploadConfig();
+   renderConsole();
+   if (!consoleInput.disabled) consoleInput.focus();
+  }
+ }
+};
+
+$('stop').onclick = event => {
+ if (!event.isTrusted || !busy || !session) return;
+ operation?.abort();
+ session.stop();
+ status('Stoppen… de actieve consolebewerking wordt afgebroken.');
+ void closeConsole(session, 'Upload gestopt. De consoleverbinding is verbroken.');
+};
+
+function leavePage() {
+ leaving = true;
+ operation?.abort();
+ session?.stop();
+ source = null;
+ transcript = new ConsoleTranscript();
+ accept = null;
+ consoleInput.value = '';
+ consoleOutput.textContent = '';
+ $('config').textContent = '';
+ clearTimeout(timeout);
+ clearInterval(ageTimer);
+}
+
+saveFilter.onchange = renderUploadConfig;
+$('cancel').onclick = () => {
+ leavePage();
+ window.close();
+};
+window.addEventListener('pagehide', leavePage);
+renderConsole();
