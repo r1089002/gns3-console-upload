@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Upload Palo Alto config · Project 2026</title>
+  <link rel="stylesheet" href="style.css?v=20261122-1">
+  <script type="module" src="pan-upload-page.mjs?v=20261122-1"></script>
+</head>
+<body>
+<main class="upload-app" id="app" data-phase="waiting">
+  <header class="app-header">
+    <div class="app-brand"><span class="brand-icon" aria-hidden="true">⇧</span><span>PROJECT 2026<small>GNS3 · USB-CONSOLE</small></span></div>
+    <span class="connection-pill"><span></span> Config blijft in je browser</span>
+  </header>
+
+  <section class="page-heading">
+    <h1>Upload je Palo Alto-configuratie.</h1>
+    <p class="intro">Zet voorbereide PAN-OS <code>set</code>-opdrachten via USB-console in de candidate-configuratie. Controleer daarna de wijzigingen en voer de commit zelf uit.</p>
+  </section>
+
+  <ol class="stepper" aria-label="Voortgang">
+    <li id="step-connect" aria-current="step">Verbinden</li>
+    <li id="step-check">Toestel controleren</li>
+    <li id="step-prepare">Regels bekijken</li>
+    <li id="step-upload">Uploaden</li>
+  </ol>
+
+  <div class="transfer-layout">
+    <section class="transfer-card" aria-labelledby="targetDevice">
+      <div class="card-heading"><span class="eyebrow">GEKOZEN IN GNS3</span><span id="phase-badge" class="phase-badge">Wacht op console</span></div>
+      <h2 id="targetDevice">Geen firewall geselecteerd</h2>
+      <div class="config-facts" id="physicalDevice" role="status">Fysieke firewall nog niet gecontroleerd.</div>
+      <button id="checkDevice" class="secondary" type="button" disabled>Toestel controleren</button>
+
+      <div class="config-details">
+        <p><label for="configInput">Voorbereide PAN-OS <code>set</code>-opdrachten</label></p>
+        <textarea id="configInput" rows="6" cols="27" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Plak je set-opdrachten hier"></textarea>
+        <input id="configFile" type="file" accept=".txt,.set" aria-label="Lokaal PAN-OS-bestand" hidden>
+        <div class="actions">
+          <button id="chooseFile" class="secondary" type="button">Kies .txt of .set</button>
+          <button id="prepareConfig" class="secondary" type="button">Regels bekijken</button>
+        </div>
+        <p id="configCount" class="progress-note" role="status">Nog geen opdrachten klaargezet.</p>
+        <pre id="configPreview" tabindex="0" aria-label="Klaargezette PAN-OS-opdrachten" hidden></pre>
+      </div>
+
+      <div class="config-details">
+        <div class="progress-title"><label for="uploadProgress">Upload naar candidate</label><span id="uploadValue">0%</span></div>
+        <progress id="uploadProgress" max="100" value="0"></progress>
+        <p id="uploadStatus" class="console-message" role="status">Controleer het toestel en bekijk de voorbereide regels.</p>
+        <div class="actions">
+          <button id="upload" type="button" disabled>Naar candidate uploaden</button>
+          <button id="stop" class="secondary danger" type="button" hidden>Upload stoppen</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="console-panel" aria-labelledby="console-title">
+      <div class="console-heading">
+        <h2 id="console-title">Fysieke console</h2>
+        <span id="console-state" class="console-state">Niet verbonden</span>
+      </div>
+      <div class="console-connection">
+        <label for="baud">Consolesnelheid
+          <select id="baud"><option value="9600">9600 baud</option><option value="115200">115200 baud</option></select>
+        </label>
+        <button id="console-connect" class="secondary" type="button" disabled>Verbinden</button>
+      </div>
+      <div class="console-terminal">
+        <div class="console-terminal-header"><span>USB-console</span><span id="console-mode">Inactief</span></div>
+        <pre id="console-output" role="region" aria-label="Console-uitvoer" tabindex="0"></pre>
+        <form id="console-form" class="console-command" aria-label="Console-invoer versturen">
+          <span id="console-prompt" class="console-prompt">—</span>
+          <label class="visually-hidden" for="console-input">Console-invoer</label>
+          <input id="console-input" type="text" aria-describedby="console-prompt console-mode" placeholder="Commando of reactie" autocomplete="off" autocapitalize="off" spellcheck="false" disabled>
+          <button id="console-enter" type="submit" disabled>Enter</button>
+        </form>
+      </div>
+      <div class="console-shortcuts">
+        <button id="console-more" class="secondary" type="button" hidden>Volgende pagina (spatie)</button>
+        <button id="console-interrupt" class="secondary" type="button" aria-label="Opdracht onderbreken (Ctrl+C)" disabled>Ctrl+C</button>
+      </div>
+      <p id="console-message" class="console-message" role="status">Sluit de USB-consolekabel aan, sluit PuTTY en klik op Verbinden.</p>
+    </section>
+  </div>
+  <footer class="upload-footer"><span>Alleen de statische pagina wordt door GitHub gehost.</span></footer>
+</main>
+</body>
+</html>

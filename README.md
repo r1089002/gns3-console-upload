@@ -14,6 +14,12 @@ Bij een geslaagde overdracht of een IOS-weigering blijft de verbinding open voor
 
 **L2-switch: no ip routing weglaten** verschijnt als de bron die zelfstandige IOS-opdracht bevat. Het vinkje staat bij elke nieuwe uploadpagina uit. Aanvinken verwijdert die opdracht uit het uploadvoorbeeld, de totaaltelling en de fysieke overdracht. Het opslagfilter werkt onafhankelijk.
 
+## Palo Alto via USB-console
+
+De GNS3-knop bij FW-NY en FW-BRU opent `palo-upload.html`. Verbind de USB-console, meld je aan, controleer het fysieke toestel en zet vooraf beoordeelde PAN-OS-`set`-opdrachten klaar vanuit een lokaal tekstbestand of het invoervak. De pagina verifieert het gekozen toestel opnieuw en controleert de candidate voordat ze de commando’s verstuurt.
+
+De overdracht stopt bij een fout. Beoordeel de wijzigingen in de PAN-OS-candidate en voer de commit zelf uit. Het bestaande XML-bestand van de virtuele firewall is beschikbaar via Configcache. Voor USB gebruik je een afzonderlijke setlijst die voor het fysieke model is voorbereid.
+
 ## Voortgang
 
 Ophalen toont een onbepaalde balk zolang de exporter de switch uitleest; daarna 100% wanneer de volledige config ontvangen en gevalideerd is. Er wordt geen percentage verzonnen. Upload toont het aandeel door IOS beantwoorde opdrachten, inclusief configure terminal/end. Dit is geen onafhankelijke inhoudelijke validatie van de fysieke switchconfig.
