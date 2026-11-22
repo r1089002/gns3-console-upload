@@ -42,14 +42,16 @@ function endsInConfigEnd(commands){
  return commands.at(-1)==='end'&&commands.findIndex(command=>words(command)[0]==='end')===commands.length-1;
 }
 
-export function prepareRunning(raw){
+export function prepareRunning(raw,{excludeNoIpRouting=false}={}){
  if(typeof raw!=='string'||raw.length>2*1024*1024||INVALID_WIRE_CHAR.test(raw.replace(/\r/g,'')))throw Error('Geen geldige tekstconfig ontvangen.');
  if(/^\s*</.test(raw)||/\b(?:MASKED|REDACTED|CHANGEME)\b|<(?:PASSWORD|SECRET|COMMUNITY|SNMP[^>]*)>/i.test(raw))throw Error('Dit is XML, een template of een gemaskeerde export.');
  const lines=raw.replace(/\r\n?/g,'\n').split('\n');let i=0;
  while(i<lines.length&&(!lines[i].trim()||/^\s*!/.test(lines[i])||/^\s*(?:Building configuration\.\.\.|Current configuration\s*:\s*\d+ bytes|show running-config)\s*$/.test(lines[i])))i++;
  if(!/^version\s+\S/.test(lines[i]||''))throw Error('Geen volledige IOS running-config ontvangen.');
  const commands=[],saveCommands=[],excludedSaveCommands=[];
- const excludedLines=new Set(),unsupportedSaveLines=new Set();let hostname=null;
+ const excludedLines=new Set(),excludedLinesWithSaves=new Set();
+ const noIpRoutingCommands=new Set();
+ let hostname=null;
  for(;i<lines.length;i++){
   const line=lines[i].trim();if(!line||line.startsWith('!'))continue;
   const banner=/^banner\s+(\S+)\s+(\^[A-Za-z@\[\\\]^_?]|.)(.*)$/.exec(line);
@@ -62,12 +64,19 @@ export function prepareRunning(raw){
    if(!safe||!validUploadCommand(command))throw Error('Banner kan niet veilig worden doorgestuurd.');
    commands.push(command);continue;
   }
+  if(/^no[ \t]+ip[ \t]+routing[ \t]*$/i.test(lines[i])){
+   noIpRoutingCommands.add(commands.length);
+   if(excludeNoIpRouting){
+    excludedLines.add(i);
+    excludedLinesWithSaves.add(i);
+   }
+  }
   if(savesConfiguration(line)){
    excludedSaveCommands.push(line);
    excludedLines.add(i);
    const canonical=line.toLowerCase().replace(/[ \t]+/g,' ');
    if(SUPPORTED_SAVE_COMMANDS.has(canonical))saveCommands.push(canonical);
-   else unsupportedSaveLines.add(i);
+   else excludedLinesWithSaves.add(i);
    continue;
   }
   if(!validUploadCommand(line))throw Error('De bron bevat een uitvoeringsopdracht in plaats van alleen running-config.');
@@ -75,9 +84,13 @@ export function prepareRunning(raw){
   commands.push(line);
  }
  if(!hostname||!endsInConfigEnd(commands))throw Error('De running-config heeft geen geldige afsluiting.');
+ const uploadCommands=excludeNoIpRouting?commands.filter((_,index)=>!noIpRoutingCommands.has(index)):commands;
  const config=excludedLines.size?lines.filter((_,index)=>!excludedLines.has(index)).join('\n'):raw;
- const configWithSaves=unsupportedSaveLines.size?lines.filter((_,index)=>!unsupportedSaveLines.has(index)).join('\n'):raw;
- return {hostname,commands,config,configWithSaves,saveCommands,excludedSaveCommands,bytes:new TextEncoder().encode(raw).byteLength};
+ const configWithSaves=excludedLinesWithSaves.size?lines.filter((_,index)=>!excludedLinesWithSaves.has(index)).join('\n'):raw;
+ return {
+  hostname,commands:uploadCommands,config,configWithSaves,saveCommands,excludedSaveCommands,
+  noIpRoutingCount:noIpRoutingCommands.size,bytes:new TextEncoder().encode(raw).byteLength,
+ };
 }
 export async function sendIOS(plan,exchange,{signal,includeSaveCommands=false,onProgress=()=>{}}={}){
  const commands=Array.isArray(plan?.commands)?[...plan.commands]:[];
@@ -121,4 +134,4 @@ export async function sendIOS(plan,exchange,{signal,includeSaveCommands=false,on
  }
  return {count,saved:saveCommands.length>0};
 }
-export function receiver(origin,source,job){let used=false;return event=>{const d=event.data;if(used||!source||event.source!==source||event.origin!==origin||d?.version!==1||d.type!=='running'||d.job!==job||typeof d.name!=='string'||d.name.length>100)return null;const plan=prepareRunning(d.config);used=true;return {...plan,name:d.name,prepared:d.prepared===true};};}
+export function receiver(origin,source,job){let used=false;return event=>{const d=event.data;if(used||!source||event.source!==source||event.origin!==origin||d?.version!==1||d.type!=='running'||d.job!==job||typeof d.name!=='string'||d.name.length>100)return null;const plan=prepareRunning(d.config);used=true;return {...plan,rawConfig:d.config,name:d.name,prepared:d.prepared===true};};}

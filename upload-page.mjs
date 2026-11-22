@@ -1,9 +1,11 @@
 import {SERIAL_WRITES_ENABLED,SOURCE_ORIGINS} from './upload-settings.mjs?v=20261028-3';
-import {receiver,sendIOS} from './upload-core.mjs?v=20261122-1';
+import {prepareRunning,receiver,sendIOS} from './upload-core.mjs?v=20261122-2';
 import {SerialSession,serialErrorMessage} from './upload-serial.mjs?v=20261122-1';
 import {ConsoleTranscript} from './upload-terminal.mjs?v=20261122-1';
 const $=id=>document.getElementById(id);let job=null,origin=null,accept=null,source=null,session=null,cleanupPending=false,ended=false,busy=false,operation=null,confirmed=0,receivedAt=null,ageTimer=null,ageMinute=-1;
 const saveFilter=$('hide-save-commands');
+const routingFilter=$('filter-no-ip-routing');
+routingFilter.checked=false;
 const consoleInput = $('console-input');
 const consoleOutput = $('console-output');
 const consoleStates = {
@@ -20,6 +22,7 @@ function phase(value,label){$('app').dataset.phase=value;$('phase-badge').textCo
 function updateSend(){
  $('send').disabled=!SERIAL_WRITES_ENABLED||!serialAvailable()||!source||busy||cleanupPending||writingManually||consoleState!=='open'||!transcript.ready;
  saveFilter.disabled=busy||cleanupPending;
+ routingFilter.disabled=busy||cleanupPending;
 }
 function showConsoleMessage(message) {
  $('console-message').textContent = message;
@@ -50,17 +53,24 @@ function renderConsole() {
  }
  updateSend();
 }
+function selectedUpload(){
+ return routingFilter.checked&&source.noIpRoutingCount
+  ?prepareRunning(source.rawConfig,{excludeNoIpRouting:true})
+  :source;
+}
 function renderUploadConfig(){
  $('save-control').hidden=!source;
+ $('routing-control').hidden=!source?.noIpRoutingCount;
  if(!source){
   $('config').textContent='';
   document.querySelector('.config-details').open=false;
   return;
  }
- const filtered=source.excludedSaveCommands.length;
- const included=saveFilter.checked?0:source.saveCommands.length;
- const config=saveFilter.checked?source.config:source.configWithSaves;
- const total=source.commands.length+included+1;
+ const plan=selectedUpload();
+ const filtered=plan.excludedSaveCommands.length;
+ const included=saveFilter.checked?0:plan.saveCommands.length;
+ const config=saveFilter.checked?plan.config:plan.configWithSaves;
+ const total=plan.commands.length+included+1;
  $('config').textContent=config;
  $('detail').textContent=`${new TextEncoder().encode(config).byteLength.toLocaleString('nl-BE')} bytes · ${total} consoleopdrachten · hostname ${source.hostname}`;
  if(!$('upload-progress').value)$('upload-note').textContent=`0 van ${total} consoleopdrachten, inclusief configure terminal.`;
@@ -73,6 +83,12 @@ function renderUploadConfig(){
  $('destination-save-note').textContent=included
   ?'De opslagopdrachten schrijven de actieve configuratie naar de startup-config van de fysieke switch.'
   :'De upload past de regels toe in het werkgeheugen van de switch.';
+ const routingCount=source.noIpRoutingCount;
+ $('routing-upload-note').textContent=routingFilter.checked&&routingCount
+  ?routingCount===1
+   ?'Deze regel wordt overgeslagen in de fysieke upload.'
+   :routingCount+' regels worden overgeslagen in de fysieke upload.'
+  :'Vink aan als je fysieke Layer 2-switch deze IOS-opdracht weigert.';
 }
 function refreshAge(){if(receivedAt===null)return;const minutes=Math.max(0,Math.floor((Date.now()-receivedAt)/60000));if(minutes!==ageMinute){ageMinute=minutes;$('source-age').textContent=minutes===0?'zojuist':`${minutes} min geleden`;}}
 function failed(message){ended=true;accept=null;clearTimeout(timeout);phase('error','Ophalen mislukt');status(message);$('fetch-progress').value=0;$('fetch-value').textContent='Mislukt';source=null;renderUploadConfig();updateSend();}
@@ -246,7 +262,7 @@ $('send').onclick = async event => {
    if (command === 'configure terminal') configurationStarted = true;
    return owned.exchange(command, options);
   };
-  const result = await sendIOS(source, exchange, {
+  const result = await sendIOS(selectedUpload(), exchange, {
    signal, includeSaveCommands,
    onProgress(n, total) {
     confirmed = n;
@@ -304,6 +320,7 @@ function leavePage() {
 }
 
 saveFilter.onchange = renderUploadConfig;
+routingFilter.onchange = renderUploadConfig;
 $('cancel').onclick = () => {
  leavePage();
  window.close();

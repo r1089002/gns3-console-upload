@@ -12,6 +12,8 @@ Bij een geslaagde overdracht of een IOS-weigering blijft de verbinding open voor
 
 **Opslagopdrachten uit de config filteren** staat standaard aangevinkt. Uitvinken neemt `write memory` en `copy running-config startup-config` mee als deze in de opgehaalde bron staan. De uploader voert ze na `end` uit, zodat de fysieke switch de configuratie ook voor een herstart bewaart. Andere opslagvarianten blijven gefilterd.
 
+**L2-switch: no ip routing weglaten** verschijnt als de bron die zelfstandige IOS-opdracht bevat. Het vinkje staat bij elke nieuwe uploadpagina uit. Aanvinken verwijdert die opdracht uit het uploadvoorbeeld, de totaaltelling en de fysieke overdracht. Het opslagfilter werkt onafhankelijk.
+
 ## Voortgang
 
 Ophalen toont een onbepaalde balk zolang de exporter de switch uitleest; daarna 100% wanneer de volledige config ontvangen en gevalideerd is. Er wordt geen percentage verzonnen. Upload toont het aandeel door IOS beantwoorde opdrachten, inclusief configure terminal/end. Dit is geen onafhankelijke inhoudelijke validatie van de fysieke switchconfig.

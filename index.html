@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="nl"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Upload config · Project 2026</title><link rel="stylesheet" href="style.css?v=20261122-1"><script type="module" src="upload-page.mjs?v=20261122-1"></script></head>
+<html lang="nl"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Upload config · Project 2026</title><link rel="stylesheet" href="style.css?v=20261122-1"><script type="module" src="upload-page.mjs?v=20261122-2"></script></head>
 <body><main class="upload-app" id="app" data-phase="waiting">
 <header class="app-header"><a class="app-brand" href="./upload.html"><span class="brand-icon" aria-hidden="true">⇧</span><span>PROJECT 2026<small>GNS3 · CONSOLE TRANSFER</small></span></a><span class="connection-pill"><span></span> Config blijft in je browser</span></header>
 <section class="page-heading"><p class="eyebrow">VAN VIRTUEEL NAAR FYSIEK</p><h1>Upload je configuratie.</h1><p class="intro">De actuele running-config van je GNS3-switch, rechtstreeks naar je fysieke switch via USB-console.</p></section>
@@ -8,6 +8,10 @@
 <div class="save-control" id="save-control" hidden>
 <label class="save-option"><input id="hide-save-commands" type="checkbox" checked autocomplete="off" aria-controls="config" aria-describedby="save-upload-note"> Opslagopdrachten uit de config filteren</label>
 <p id="save-upload-note" class="progress-note" aria-live="polite"></p>
+</div>
+<div class="save-control" id="routing-control" hidden>
+<label class="save-option"><input id="filter-no-ip-routing" type="checkbox" autocomplete="off" aria-controls="config" aria-describedby="routing-upload-note"><span>L2-switch: <code>no ip routing</code> weglaten</span></label>
+<p id="routing-upload-note" class="progress-note" aria-live="polite"></p>
 </div>
 <div class="progress-block"><div class="progress-title"><label for="fetch-progress">Running-config ophalen</label><span id="fetch-value">Wachten</span></div><progress id="fetch-progress" max="100" value="0" aria-label="Voortgang ophalen"></progress><p id="fetch-note" class="progress-note">Je virtuele switch wordt alleen uitgelezen.</p></div>
 <div class="config-facts" id="detail">Nog geen bron ontvangen</div>
