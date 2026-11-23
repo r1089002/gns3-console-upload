@@ -7,6 +7,7 @@ const COPY_TO_STARTUP='copy running-config startup-config';
 const SUPPORTED_SAVE_COMMANDS=new Set(['write memory',COPY_TO_STARTUP]);
 const STARTUP_FILENAME_PROMPT=/(?:^|[\r\n])\s*Destination file\s?name \[startup-config\]\?\s*$/i;
 const IOS_ERROR=/(?:^|[\r\n])\s*(?:%\s*(?:Invalid|Incomplete|Ambiguous|Error)|Error:)/i;
+const IOS_SYSLOG=/^(?:\d+:[ \t]+)?(?:[*.]?(?:[A-Z][a-z]{2}[ \t]+\d{1,2}[ \t]+)?\d{1,3}:\d{2}:\d{2}(?:\.\d+)?(?:[ \t]+[A-Z]{2,5})?:[ \t]+)?%[A-Z][A-Z0-9_]*-[0-7]-[A-Z0-9_]+:[ \t]+\S.*$/;
 const DISPLAYABLE_IOS_ERRORS=new Set([
  'configure terminal','no ip routing','no ip cef','no ipv6 cef',
  'service compress-config','negotiation auto','switchport trunk encapsulation dot1q','spanning-tree portfast edge',
@@ -24,6 +25,17 @@ const SNMP_GROUP_DECLARATION=/^snmp-server[ \t]+group[ \t]+zbx2026(?:[ \t]|$)/i;
 const SNMP_CONFLICT=/^(?:snmp-server[ \t]+user[ \t]+zbx2026|no[ \t]+(?:snmp-server|ip[ \t]+access-list[ \t]+standard[ \t]+snmp_zabbix))(?:[ \t]|$)/i;
 const SNMP_ACL_RULE=/^(?:\d+[ \t]+)?(?:permit|deny|remark)[ \t]/i;
 const SNMP_ACL_PERMIT=/^(?:\d+[ \t]+)?permit[ \t]/i;
+
+function iosReplyLines(reply){
+ const lines=reply.replace(/\r/g,'\n').split('\n').map(line=>line.trim()).filter(Boolean);
+ while(lines.length&&IOS_SYSLOG.test(lines.at(-1)))lines.pop();
+ return lines;
+}
+
+export function iosReplyPrompt(reply){
+ const tail=iosReplyLines(reply).at(-1)||'';
+ return /^[\w.-]+(?:\([\w/-]+\))?[#>]$/.test(tail)?tail:null;
+}
 
 function snmpUserCommand(auth,priv){
  return `snmp-server user ${SNMP_USER} ${SNMP_GROUP} v3 auth sha ${auth} priv aes 128 ${priv}`;
@@ -60,7 +72,7 @@ async function readSNMPUser(exchange,prompt){
  let reply;
  try{reply=await exchange(SNMP_LOOKUP);}catch{throw Error(message);}
  if(typeof reply!=='string')throw Error(message);
- const lines=reply.replace(/\r/g,'\n').split('\n').map(line=>line.trim()).filter(Boolean);
+ const lines=iosReplyLines(reply);
  if(lines.pop()!==prompt)throw Error(message);
  const echo=lines.shift();
  if(echo!==SNMP_LOOKUP&&!(echo?.startsWith(prompt)&&echo.slice(prompt.length).trimStart()===SNMP_LOOKUP))throw Error(message);
@@ -202,7 +214,7 @@ export async function sendIOS(plan,exchange,{signal,includeSaveCommands=false,sn
  let count=0;const check=()=>{if(signal?.aborted)throw Error(`Afgebroken na ${count} opdrachten. Eerdere regels kunnen al actief zijn.`);};
  check();
  const initial=await exchange('\r');
- const prompt=initial.replace(/\r/g,'\n').trimEnd().split('\n').at(-1);
+ const prompt=iosReplyPrompt(initial);
  if(/^[\w.-]+>$/.test(prompt))throw Error('De switch staat op een IOS-prompt met >. Typ enable in de fysieke console tot je de gewone #‑prompt ziet.');
  if(CONFIG_PROMPT.test(prompt))throw Error('De console staat in een configuratiemodus. Typ end in de fysieke console tot je de gewone #‑prompt ziet.');
  if(!EXEC_PROMPT.test(prompt))throw Error('Het fysieke toestel moet op een normale IOS-prompt met # staan. Controleer de gekozen COM-poort en de aanmelding.');
@@ -221,7 +233,7 @@ export async function sendIOS(plan,exchange,{signal,includeSaveCommands=false,sn
    if(sensitive)throw Error(`IOS weigerde de SNMP-gebruikersregel bij opdracht ${count+1}.`);
    throw Error(`IOS weigerde opdracht ${count+1}${label}.`);
   }
-  const tail=reply.replace(/\r/g,'\n').trimEnd().split('\n').at(-1)||'';
+  const tail=iosReplyPrompt(reply);
   const expectedPrompt=command==='end'?EXEC_PROMPT:CONFIG_PROMPT;
   if(!expectedPrompt.test(tail)||(exactPrompt&&tail!==exactPrompt)){
    if(sensitive)throw Error(`Onverwachte IOS-prompt bij de SNMP-gebruikersregel ${count+1}.`);
@@ -257,7 +269,7 @@ export async function sendIOS(plan,exchange,{signal,includeSaveCommands=false,sn
   }catch(error){
    throw timeoutAtCommand(error,count+1,command);
   }
-  const tail=reply.replace(/\r/g,'\n').trimEnd().split('\n').at(-1)||'';
+  const tail=iosReplyPrompt(reply);
   if(IOS_ERROR.test(reply)||!EXEC_PROMPT.test(tail)||!/\[OK\]|\b\d+ bytes copied\b/i.test(reply)){
    throw Error('Opslaan als startup-config is niet bevestigd. Controleer de switch.');
   }

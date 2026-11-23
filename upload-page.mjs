@@ -1,15 +1,18 @@
 import {SERIAL_WRITES_ENABLED,SOURCE_ORIGINS} from './upload-settings.mjs?v=20261028-3';
-import {describeSNMP,prepareRunning,receiver,sendIOS,validSNMPCredential} from './upload-core.mjs?v=20261123-2';
+import {describeSNMP,iosReplyPrompt,prepareRunning,receiver,sendIOS,validSNMPCredential} from './upload-core.mjs?v=20261123-3';
 import {SerialSession,serialErrorMessage} from './upload-serial.mjs?v=20261123-1';
 import {ConsoleTranscript} from './upload-terminal.mjs?v=20261122-1';
+import {prepareCatalyst2960} from './ios-catalyst2960.mjs?v=20261123-1';
 const $=id=>document.getElementById(id);let job=null,origin=null,accept=null,source=null,session=null,cleanupPending=false,ended=false,busy=false,operation=null,confirmed=0,receivedAt=null,ageTimer=null,ageMinute=-1;
 const saveFilter=$('hide-save-commands');
 const routingFilter=$('filter-no-ip-routing');
+const catalystFilter=$('catalyst2960-profile');
 const snmpFilter=$('snmp-profile');
 const snmpAuth=$('snmp-auth');
 const snmpPriv=$('snmp-priv');
 let snmpDescription=null;
 routingFilter.checked=false;
+catalystFilter.checked=false;
 snmpFilter.checked=false;
 const consoleInput = $('console-input');
 const consoleOutput = $('console-output');
@@ -31,6 +34,7 @@ function updateSend(){
  $('send').disabled=!SERIAL_WRITES_ENABLED||!serialAvailable()||!source||busy||cleanupPending||writingManually||consoleState!=='open'||!transcript.ready||(snmpFilter.checked&&!snmpReady);
  saveFilter.disabled=busy||cleanupPending;
  routingFilter.disabled=busy||cleanupPending;
+ catalystFilter.disabled=busy||cleanupPending;
  snmpFilter.disabled=!snmpDescription||busy||cleanupPending;
  snmpAuth.disabled=snmpPriv.disabled=snmpFilter.disabled||!snmpFilter.checked;
  snmpAuth.setAttribute('aria-invalid',String(Boolean(snmpAuth.value&&!authReady)));
@@ -68,6 +72,10 @@ function renderConsole() {
 function selectedUpload(){
  const excludeNoIpRouting=Boolean(routingFilter.checked&&source.noIpRoutingCount);
  const excludeVirtualSNMPEngineId=Boolean(snmpFilter.checked&&snmpDescription?.excludesEngineId);
+ if(catalystFilter.checked){
+  const catalyst=prepareCatalyst2960(source.rawConfig);
+  return {...prepareRunning(catalyst.config,{excludeNoIpRouting,excludeVirtualSNMPEngineId}),catalystChanges:catalyst.changes};
+ }
  return excludeNoIpRouting||excludeVirtualSNMPEngineId
   ?prepareRunning(source.rawConfig,{excludeNoIpRouting,excludeVirtualSNMPEngineId}) :source;
 }
@@ -95,6 +103,7 @@ function renderSNMP(){
 function renderUploadConfig(){
  $('save-control').hidden=!source;
  $('routing-control').hidden=!source?.noIpRoutingCount;
+ $('catalyst2960-control').hidden=!source;
  renderSNMP();
  if(!source){
   $('config').textContent='';
@@ -106,6 +115,10 @@ function renderUploadConfig(){
  const included=saveFilter.checked?0:plan.saveCommands.length;
  const config=saveFilter.checked?plan.config:plan.configWithSaves;
  const commands=saveFilter.checked?plan.commands:plan.commandsWithSaves;
+ const changes=plan.catalystChanges;
+ $('catalyst2960-note').textContent=changes
+  ? `${Object.values(changes).reduce((sum,value)=>sum+value,0)} aanpassingen. Bekijk hieronder de verzendlijst. SSH-algoritmes en het eigen certificaat volgen de mogelijkheden van de fysieke switch.`
+  : 'Zet dit aan voor de fysieke WS-C2960-24TT-L met IOS 15.0 SE. Het model wordt vóór de upload gecontroleerd.';
  const total=commands.length+included+1+(snmpFilter.checked?snmpDescription.operationCount:0);
  $('config').textContent=config;
  $('detail').textContent=`${new TextEncoder().encode(config).byteLength.toLocaleString('nl-BE')} bytes · ${total} consoleopdrachten · hostname ${source.hostname}`;
@@ -300,9 +313,18 @@ $('send').onclick = async event => {
  try {
   const exchange = (command, options) => {
    if (command === 'configure terminal') configurationStarted = true;
-   return owned.exchange(command, options);
+   return owned.exchange(command, {
+    acceptAdditionalPrompt: reply => Boolean(iosReplyPrompt(reply)) || options?.acceptAdditionalPrompt?.(reply)
+   });
   };
-  const result = await sendIOS(selectedUpload(), exchange, {
+  const plan = selectedUpload();
+  if(plan.catalystChanges){
+   const identity = await exchange('show version | include Model number|Cisco IOS Software');
+   if(!/^[ \t]*Model number[ \t]*:[ \t]*WS-C2960-24TT-L[ \t]*$/mi.test(identity.replace(/\r/g,'\n'))||!/\bVersion 15\.0\(2\)SE\d*\b/i.test(identity)){
+    throw Error('Dit profiel vereist een WS-C2960-24TT-L met IOS 15.0(2)SE.');
+   }
+  }
+  const result = await sendIOS(plan, exchange, {
    signal, includeSaveCommands, snmpProfile,
    onProgress(n, total) {
     confirmed = n;
@@ -366,6 +388,7 @@ function leavePage() {
 
 saveFilter.onchange = renderUploadConfig;
 routingFilter.onchange = renderUploadConfig;
+catalystFilter.onchange = renderUploadConfig;
 snmpFilter.onchange = () => {
  if(!snmpFilter.checked)clearSNMPCredentials();
  renderUploadConfig();
