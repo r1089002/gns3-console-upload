@@ -126,7 +126,7 @@ function writePortSettings(children, isCopper, newline, output, changes) {
 export function prepareC8200L(rawConfig) {
   const changes = {
     mmi: 0, interfaces: 0, references: 0, media: 0, speedDuplex: 0, negotiation: 0, enabledInterfaces: 0,
-    ipv6Defaults: 0, pppDefaults: 0, emptyStanzas: 0,
+    ipv4CefDefault: 0, ipv6Defaults: 0, pppDefaults: 0, emptyStanzas: 0,
   };
   const observed = { virtual: false, physical: false };
   const mappedHeaders = new Set();
@@ -138,6 +138,8 @@ export function prepareC8200L(rawConfig) {
     const globalCommand = /^\S/.test(line) ? normalized(line) : '';
     if (VIRTUAL_MMI_DEFAULTS.has(globalCommand)) {
       changes.mmi++;
+    } else if (globalCommand === 'ip cef') {
+      changes.ipv4CefDefault++;
     } else if (!features.ipv6 && IPV6_DEFAULTS.has(globalCommand)) {
       changes.ipv6Defaults++;
     } else if (!features.ppp && globalCommand === PPP_DEFAULT) {
