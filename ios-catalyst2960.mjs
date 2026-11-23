@@ -2,7 +2,7 @@ const FAST_ETHERNET = /^interface[ \t]+(?:FastEthernet|Fa)0\/(?:[1-9]|1\d|2[0-4]
 const BANNER = /^banner[ \t]+\S+[ \t]+(\^[A-Za-z@\[\\\]^_?]|.)(.*)$/i;
 const PREAMBLE = /^(?:\s*!.*|\s*(?:Building configuration\.\.\.|Current configuration\s*:\s*\d+ bytes|show running-config)\s*)$/;
 const SELF_SIGNED_PKI = /^crypto[ \t]+pki[ \t]+(trustpoint|certificate[ \t]+chain)[ \t]+(TP-self-signed-\d+)[ \t]*$/i;
-const SELF_SIGNED_CERTIFICATE = /^[ \t]+certificate[ \t]+self-signed[ \t]+[\da-f]+(?:[ \t]+nvram:[\w./-]+\.cer)?[ \t]*$/i;
+const SELF_SIGNED_CERTIFICATE = /^[ \t]+certificate[ \t]+self-signed[ \t]+[\da-f]+(?:[ \t]+nvram:[\w./#-]+\.cer)?[ \t]*$/i;
 const GLOBAL_OMISSIONS = new Map([
   ['no ip cef', 'ipv4Cef'],
   ['no ipv6 cef', 'ipv6Cef'],
