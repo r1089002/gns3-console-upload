@@ -215,7 +215,7 @@ export async function sendIOS(plan,exchange,{signal,includeSaveCommands=false,sn
  check();
  const initial=await exchange('\r');
  const prompt=iosReplyPrompt(initial);
- if(/^[\w.-]+>$/.test(prompt))throw Error('De switch staat op een IOS-prompt met >. Typ enable in de fysieke console tot je de gewone #‑prompt ziet.');
+ if(/^[\w.-]+>$/.test(prompt))throw Error('De console staat op een IOS-prompt met >. Typ enable in de fysieke console tot je de gewone #‑prompt ziet.');
  if(CONFIG_PROMPT.test(prompt))throw Error('De console staat in een configuratiemodus. Typ end in de fysieke console tot je de gewone #‑prompt ziet.');
  if(!EXEC_PROMPT.test(prompt))throw Error('Het fysieke toestel moet op een normale IOS-prompt met # staan. Controleer de gekozen COM-poort en de aanmelding.');
  let addUser=false;
@@ -271,7 +271,7 @@ export async function sendIOS(plan,exchange,{signal,includeSaveCommands=false,sn
   }
   const tail=iosReplyPrompt(reply);
   if(IOS_ERROR.test(reply)||!EXEC_PROMPT.test(tail)||!/\[OK\]|\b\d+ bytes copied\b/i.test(reply)){
-   throw Error('Opslaan als startup-config is niet bevestigd. Controleer de switch.');
+   throw Error('Opslaan als startup-config is niet bevestigd. Controleer het fysieke toestel.');
   }
   count++;onProgress(count,total);
  }

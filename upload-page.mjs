@@ -1,5 +1,5 @@
 import {SERIAL_WRITES_ENABLED,SOURCE_ORIGINS} from './upload-settings.mjs?v=20261028-3';
-import {describeSNMP,iosReplyPrompt,prepareRunning,receiver,sendIOS,validSNMPCredential} from './upload-core.mjs?v=20261123-3';
+import {describeSNMP,iosReplyPrompt,prepareRunning,receiver,sendIOS,validSNMPCredential} from './upload-core.mjs?v=20261123-4';
 import {SerialSession,serialErrorMessage} from './upload-serial.mjs?v=20261123-1';
 import {ConsoleTranscript} from './upload-terminal.mjs?v=20261122-1';
 import {prepareCatalyst2960} from './ios-catalyst2960.mjs?v=20261123-3';
@@ -26,6 +26,13 @@ let writingManually = false;
 let leaving = false;
 const serialAvailable=()=>!!navigator.serial&&isSecureContext;
 function status(value){$('status').textContent=value;}
+function setSourceName(name) {
+ $('name').textContent = name;
+ const device = /^R-/i.test(name) ? 'router' : /^(?:S|SW)-/i.test(name) ? 'switch' : 'toestel';
+ const destination = device === 'toestel' ? 'fysiek toestel' : 'fysieke ' + device;
+ $('send-label').textContent = 'Upload naar ' + device;
+ $('upload-destination').textContent = 'Upload naar ' + destination;
+}
 function phase(value,label){$('app').dataset.phase=value;$('phase-badge').textContent=label;const step=value==='fetching'||value==='waiting'?'fetch':value==='ready'?'ready':value==='error'&&$('fetch-progress').value<100?'fetch':'upload';for(const key of ['fetch','ready','upload']){const el=$('step-'+key);el.toggleAttribute('data-active',key===step);if(key===step)el.setAttribute('aria-current','step');else el.removeAttribute('aria-current');}}
 function updateSend(){
  const authReady=validSNMPCredential(snmpAuth.value);
@@ -118,7 +125,7 @@ function renderUploadConfig(){
  const changes=plan.catalystChanges;
  $('catalyst2960-note').textContent=changes
   ? `${Object.values(changes).reduce((sum,value)=>sum+value,0)} aanpassingen. Bekijk hieronder de verzendlijst. SSH-algoritmes en het eigen certificaat volgen de mogelijkheden van de fysieke switch.`
-  : 'Zet dit aan voor de fysieke WS-C2960-24TT-L met IOS 15.0 SE. Het model wordt vóór de upload gecontroleerd.';
+  : 'Zet dit aan voor de fysieke WS-C2960-24TT-L of WS-C2960-24TC-L met IOS 15.0(2)SE. Het model wordt vóór de upload gecontroleerd.';
  const total=commands.length+included+1+(snmpFilter.checked?snmpDescription.operationCount:0);
  $('config').textContent=config;
  $('detail').textContent=`${new TextEncoder().encode(config).byteLength.toLocaleString('nl-BE')} bytes · ${total} consoleopdrachten · hostname ${source.hostname}`;
@@ -132,8 +139,8 @@ function renderUploadConfig(){
   ?`${saveNote} service compress-config wordt overgeslagen.` :saveNote;
  $('destination-save-title').textContent=included?'Ook opslaan voor herstart':'Alleen de running-config';
  $('destination-save-note').textContent=included
-  ?'De opslagopdrachten schrijven de actieve configuratie naar de startup-config van de fysieke switch.'
-  :'De upload past de regels toe in het werkgeheugen van de switch.';
+  ?'De opslagopdrachten schrijven de actieve configuratie naar de startup-config van het fysieke toestel.'
+  :'De upload past de regels toe in het werkgeheugen van het toestel.';
  const routingCount=source.noIpRoutingCount;
  $('routing-upload-note').textContent=routingFilter.checked&&routingCount
   ?routingCount===1
@@ -146,14 +153,14 @@ function failed(message){ended=true;accept=null;clearTimeout(timeout);phase('err
 const timeout=setTimeout(()=>failed('Geen bron ontvangen. Sluit dit venster en open Upload config opnieuw vanuit GNS3.'),180000);
 window.addEventListener('message',e=>{
  if(ended||e.source!==opener||!SOURCE_ORIGINS.includes(e.origin)||e.data?.version!==1)return;const d=e.data;
- if(d.type==='offer'&&!job&&/^[a-f0-9]{32}$/.test(d.job)){job=d.job;origin=e.origin;accept=receiver(origin,opener,job);$('name').textContent=d.name||'Virtuele switch';opener.postMessage({type:'accept',version:1,job},origin);return;}
+ if(d.type==='offer'&&!job&&/^[a-f0-9]{32}$/.test(d.job)){job=d.job;origin=e.origin;accept=receiver(origin,opener,job);setSourceName(typeof d.name === 'string' && d.name ? d.name : 'Virtueel toestel');opener.postMessage({type:'accept',version:1,job},origin);return;}
  if(e.origin!==origin||d.job!==job)return;
- if(d.type==='error'){failed(d.code==='node_not_running'?'De virtuele switch staat uit. Start hem eerst; er is geen oude config gebruikt.':'Ophalen mislukt ('+String(d.code).replace(/[^a-z_]/g,'').slice(0,50)+'). Open de knop opnieuw.');return;}
- if(d.type==='status'){phase('fetching','Running-config ophalen');$('fetch-progress').removeAttribute('value');$('fetch-value').textContent='Bezig';$('fetch-note').textContent='De switch wordt uitgelezen. Een percentage is pas bekend als de volledige config ontvangen is.';status(d.state==='credentials'?'Vul de tijdelijke exportgegevens in het GNS3-venster in.':'Actuele running-config wordt opgehaald…');return;}
- try{const data=accept?.(e);if(!data)return;source=data;ended=true;accept=null;clearTimeout(timeout);$('name').textContent=data.name;renderUploadConfig();receivedAt=Date.now();$('received-at').dateTime=new Date(receivedAt).toISOString();$('received-at').textContent=new Date(receivedAt).toLocaleTimeString('nl-BE',{hour:'2-digit',minute:'2-digit',second:'2-digit'});$('source-freshness').hidden=false;refreshAge();ageTimer=setInterval(refreshAge,30000);$('fetch-progress').value=100;$('fetch-value').textContent='100%';$('fetch-note').textContent=data.prepared?'Uploadconfig gecontroleerd; bekende labwachtwoorden in klare tekst.':'Volledige running-config ontvangen en gecontroleerd.';phase('ready','Gereed voor upload');status(data.prepared?'Uploadconfig staat klaar. Bekende labwachtwoorden gaan in klare tekst mee.':'Running-config staat klaar. Verbinden en klaarzetten doe je in de fysieke console.');if(data.prepared)$('config-details').querySelector('summary').firstChild.textContent='Uploadconfig bekijken ';$('browser-note').textContent=!serialAvailable()?'Gebruik Chrome of Edge op je laptop om via USB-console te uploaden.':!SERIAL_WRITES_ENABLED?'Verzenden is uitgeschakeld.':'De configuratie wordt pas verstuurd nadat jij de upload start.';updateSend();}catch{failed('De opgehaalde bron is geen volledige bruikbare IOS running-config. Niets verstuurd.');}
+ if(d.type==='error'){failed(d.code==='node_not_running'?'Het virtuele toestel staat uit. Start hem eerst; er is geen oude config gebruikt.':'Ophalen mislukt ('+String(d.code).replace(/[^a-z_]/g,'').slice(0,50)+'). Open de knop opnieuw.');return;}
+ if(d.type==='status'){phase('fetching','Running-config ophalen');$('fetch-progress').removeAttribute('value');$('fetch-value').textContent='Bezig';$('fetch-note').textContent='Het toestel wordt uitgelezen. Een percentage is pas bekend als de volledige config ontvangen is.';status(d.state==='credentials'?'Vul de tijdelijke exportgegevens in het GNS3-venster in.':'Actuele running-config wordt opgehaald…');return;}
+ try{const data=accept?.(e);if(!data)return;source=data;ended=true;accept=null;clearTimeout(timeout);setSourceName(data.name);renderUploadConfig();receivedAt=Date.now();$('received-at').dateTime=new Date(receivedAt).toISOString();$('received-at').textContent=new Date(receivedAt).toLocaleTimeString('nl-BE',{hour:'2-digit',minute:'2-digit',second:'2-digit'});$('source-freshness').hidden=false;refreshAge();ageTimer=setInterval(refreshAge,30000);$('fetch-progress').value=100;$('fetch-value').textContent='100%';$('fetch-note').textContent=data.prepared?'Uploadconfig gecontroleerd; bekende labwachtwoorden in klare tekst.':'Volledige running-config ontvangen en gecontroleerd.';phase('ready','Gereed voor upload');status(data.prepared?'Uploadconfig staat klaar. Bekende labwachtwoorden gaan in klare tekst mee.':'Running-config staat klaar. Verbinden en klaarzetten doe je in de fysieke console.');if(data.prepared)$('config-details').querySelector('summary').firstChild.textContent='Uploadconfig bekijken ';$('browser-note').textContent=!serialAvailable()?'Gebruik Chrome of Edge op je laptop om via USB-console te uploaden.':!SERIAL_WRITES_ENABLED?'Verzenden is uitgeschakeld.':'De configuratie wordt pas verstuurd nadat jij de upload start.';updateSend();}catch{failed('De opgehaalde bron is geen volledige bruikbare IOS running-config. Niets verstuurd.');}
 });
 for(const allowed of SOURCE_ORIGINS)opener?.postMessage({type:'ready',version:1},allowed);
-if(!opener){clearTimeout(timeout);ended=true;status('Open deze pagina via Upload config bij een switch in GNS3.');}
+if(!opener){clearTimeout(timeout);ended=true;status('Open deze pagina via Upload config bij een toestel in GNS3.');}
 function finishConsoleClose(owned, result, message) {
  if (session !== owned) return;
  cleanupPending = !result.complete;
@@ -183,7 +190,7 @@ function showPromptHint() {
  else if (transcript.question) showConsoleMessage('Lees eerst de IOS-vraag in de console en geef bewust antwoord.');
  else if (transcript.prompt.endsWith('>')) showConsoleMessage('Typ enable om naar de gewone #‑prompt te gaan.');
  else if (transcript.prompt && !transcript.ready) showConsoleMessage('Typ end om naar de gewone #‑prompt te gaan.');
- else if (transcript.ready) showConsoleMessage('De fysieke switch staat op de gewone #‑prompt.');
+ else if (transcript.ready) showConsoleMessage('De fysieke console staat op de gewone #‑prompt.');
  else showConsoleMessage('Druk op Enter om de prompt op te vragen.');
 }
 
@@ -197,7 +204,7 @@ $('console-connect').onclick = async event => {
 
  const baudRate = Number($('baud').value);
  consoleState = 'choosing';
- showConsoleMessage('Kies de USB-consolepoort van je fysieke switch.');
+ showConsoleMessage('Kies de USB-consolepoort van je fysieke toestel.');
  renderConsole();
  let owned;
  try {
@@ -331,7 +338,7 @@ $('send').onclick = async event => {
     const percent = Math.floor(n / total * 100);
     $('upload-progress').value = percent;
     $('upload-value').textContent = percent + '%';
-    $('upload-note').textContent = n + ' van ' + total + ' consoleopdrachten door de switch beantwoord.';
+    $('upload-note').textContent = n + ' van ' + total + ' consoleopdrachten door het toestel beantwoord.';
    }
   });
   message = 'Upload afgerond. ' + result.count + ' consoleopdrachten bevestigd. '
