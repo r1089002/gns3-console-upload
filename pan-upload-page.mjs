@@ -1,14 +1,17 @@
-import { SERIAL_WRITES_ENABLED } from './upload-settings.mjs?v=20261028-3';
+import { SERIAL_WRITES_ENABLED, SOURCE_ORIGINS } from './upload-settings.mjs?v=20261028-3';
 import { SerialSession, serialErrorMessage } from './upload-serial.mjs?v=20261122-1';
 import { ConsoleTranscript } from './upload-terminal.mjs?v=20261122-1';
-import { PAN_INPUT_MAX_BYTES, identifyPAN, panPrompt, preparePAN, stagePAN } from './pan-upload-core.mjs?v=20261122-1';
+import { PAN_INPUT_MAX_BYTES, identifyPAN, panPrompt, panosTrain, preparePAN, stagePAN } from './pan-upload-core.mjs?v=20261123-1';
 
 const $ = id => document.getElementById(id);
 const consoleInput = $('console-input');
 const consoleOutput = $('console-output');
 const configInput = $('configInput');
 const configFile = $('configFile');
-const target = new URLSearchParams(location.search).get('device');
+const params = new URLSearchParams(location.search);
+const target = params.get('device');
+const cacheRequested = params.get('source') === 'cache';
+const CACHE_TARGET_MODEL = 'PA-440';
 const targetKnown = target === 'FW-NY' || target === 'FW-BRU';
 const serialAvailable = SERIAL_WRITES_ENABLED && Boolean(navigator.serial) && isSecureContext;
 const states = {
@@ -69,6 +72,8 @@ let writingManually = false;
 let operation = null;
 let checkedDevice = null;
 let prepared = null;
+let cachedSource = null;
+let cancelCacheRequest = null;
 let sourceRevision = 0;
 let readingFile = false;
 let leaving = false;
@@ -93,6 +98,14 @@ function clearReview() {
   $('configCount').textContent = 'Nog geen opdrachten klaargezet.';
 }
 
+function showPrepared(commands) {
+  prepared = commands;
+  $('configCount').textContent = `${commands.length} ${commands.length === 1 ? 'opdracht' : 'opdrachten'} klaargezet.`;
+  $('configPreview').textContent = commands.join('\n');
+  $('configPreview').hidden = false;
+  progress(0, commands.length);
+}
+
 function render() {
   const open = consoleState === 'open';
   const manual = open && !operation && !writingManually && !leaving;
@@ -113,6 +126,7 @@ function render() {
   $('console-enter').disabled = consoleInput.disabled;
   $('console-interrupt').disabled = !manual;
   $('console-more').hidden = !manual || !transcript.more;
+  $('checkDevice').hidden = cachedSource !== null;
   $('checkDevice').disabled = !canCheck;
   $('physicalDevice').textContent = checkedDevice
     ? `${checkedDevice.hostname} · ${checkedDevice.model} · PAN-OS ${checkedDevice.version} · Serienummer ${checkedDevice.serial}`
@@ -120,12 +134,13 @@ function render() {
   configInput.disabled = operation !== null;
   $('chooseFile').disabled = operation !== null;
   $('prepareConfig').disabled = operation !== null || readingFile;
-  $('upload').disabled = !targetKnown || !canCheck || !checkedDevice || !matchingPrompt || !prepared || readingFile;
+  $('upload').disabled = !targetKnown || !canCheck || !prepared || readingFile ||
+    (!cachedSource && (!checkedDevice || !matchingPrompt));
   $('stop').hidden = operation === null;
   $('stop').textContent = operation?.label === 'Toestel controleren' ? 'Controle stoppen' : 'Upload stoppen';
 
   const step = operation?.label === 'Upload actief' || $('app').dataset.phase === 'done' ? 'upload' :
-    !open ? 'connect' : !checkedDevice ? 'check' : !prepared ? 'prepare' : 'upload';
+    !open ? 'connect' : cachedSource && canCheck && prepared ? 'upload' : !checkedDevice ? 'check' : !prepared ? 'prepare' : 'upload';
   for (const key of ['connect', 'check', 'prepare', 'upload']) {
     if (key === step) $(`step-${key}`).setAttribute('aria-current', 'step');
     else $(`step-${key}`).removeAttribute('aria-current');
@@ -150,6 +165,8 @@ function showPromptHint() {
   else if (transcript.more) consoleMessage('Klik op Volgende pagina of onderbreek de uitvoer.');
   else if (panPrompt(transcript.prompt)?.mode === 'configuration') {
     consoleMessage('Je staat in de configuratiemodus. Beoordeel de candidate vóór je zelf commit. Gebruik exit om terug te keren voor een nieuwe toestelcontrole.');
+  } else if (transcript.prompt && cachedSource && prepared) {
+    consoleMessage('De operationele prompt is klaar. De identiteit en candidate worden bij de upload gecontroleerd.');
   } else if (transcript.prompt) consoleMessage(checkedDevice
     ? 'De fysieke identiteit is gecontroleerd. Bekijk de regels en de fysieke gegevens voor je uploadt.'
     : 'De operationele prompt is klaar. Klik op Toestel controleren.');
@@ -297,6 +314,9 @@ configFile.onchange = async () => {
   const file = configFile.files[0];
   if (!file || operation || leaving) return;
   const revision = ++sourceRevision;
+  cachedSource = null;
+  $('cacheSource').hidden = true;
+  $('cacheSource').textContent = '';
   clearReview();
   configInput.value = '';
   readingFile = true;
@@ -327,11 +347,7 @@ $('prepareConfig').onclick = event => {
   if (!event.isTrusted || $('prepareConfig').disabled || leaving) return;
   clearReview();
   try {
-    prepared = preparePAN(configInput.value);
-    $('configCount').textContent = `${prepared.length} ${prepared.length === 1 ? 'opdracht' : 'opdrachten'} klaargezet.`;
-    $('configPreview').textContent = prepared.join('\n');
-    $('configPreview').hidden = false;
-    progress(0, prepared.length);
+    showPrepared(preparePAN(configInput.value));
     if (targetKnown) status('Vergelijk de regels met de gekozen fysieke firewall.', 'ready', 'Regels klaargezet');
   } catch (error) {
     $('configCount').textContent = error?.code === 'PAN_INPUT' ? error.message : 'De opdrachten konden niet worden verwerkt.';
@@ -388,15 +404,19 @@ $('checkDevice').onclick = event => {
 
 $('upload').onclick = event => {
   if (!event.isTrusted || $('upload').disabled) return;
-  const expectedDevice = checkedDevice;
+  const checkedBeforeUpload = checkedDevice;
+  const requiredTrain = cachedSource?.train;
   const commands = prepared;
   let confirmed = 0;
   progress(0, commands.length);
   status('Fysieke identiteit en candidate controleren…', 'uploading', 'Upload actief');
   void runConsole('Upload actief', async (exchange, signal) => {
     try {
+      const expectedDevice = checkedBeforeUpload ?? await identifyPAN(exchange, {signal});
+      if (leaving || signal.aborted || consoleState !== 'open') return;
+      checkedDevice = expectedDevice;
       const result = await stagePAN(commands, exchange, {
-        expectedDevice, signal,
+        expectedDevice, requiredTrain, requiredModel: requiredTrain ? CACHE_TARGET_MODEL : undefined, signal,
         onProgress(count, total) {
           if (leaving || signal.aborted) return;
           confirmed = count;
@@ -410,7 +430,9 @@ $('upload').onclick = event => {
     } catch (error) {
       if (leaving) return;
       const message = signal.aborted ? 'Upload gestopt.' : operationError(error);
-      status(`${message} ${confirmed} van ${commands.length} opdrachten bevestigd. Controleer de candidate voordat je opnieuw begint.`,
+      const guidance = ['PAN_VERSION', 'PAN_MODEL'].includes(error?.code) ? '' :
+        ' Controleer de candidate voordat je opnieuw begint.';
+      status(`${message} ${confirmed} van ${commands.length} opdrachten bevestigd.${guidance}`,
         signal.aborted ? 'stopped' : 'error', signal.aborted ? 'Gestopt' : 'Upload onderbroken');
     }
   });
@@ -424,11 +446,87 @@ $('stop').onclick = event => {
   void closeConsole(owned, 'Consolebewerking gestopt. De consoleverbinding is verbroken.');
 };
 
+function requestCacheSource() {
+  const opener = window.opener;
+  if (!opener) {
+    status('Open Upload config bij de firewall in GNS3 om Configcache te laden.', 'error', 'Bron ontbreekt');
+    return;
+  }
+  const random = crypto.getRandomValues(new Uint8Array(16));
+  const job = Array.from(random, octet => octet.toString(16).padStart(2, '0')).join('');
+  const dateFormat = new Intl.DateTimeFormat('nl-BE', {dateStyle:'medium', timeStyle:'short', timeZone:'Europe/Brussels'});
+  const deadline = setTimeout(() => {
+    cancel();
+    if (!leaving && !sourceRevision) {
+      status('Geen antwoord van GNS3. Open Upload config opnieuw.', 'error', 'Bron ontbreekt');
+    }
+  }, 30000);
+
+  function cancel() {
+    clearTimeout(deadline);
+    window.removeEventListener('message', receive);
+    cancelCacheRequest = null;
+  }
+
+  function receive(event) {
+    const data = event.data;
+    if (leaving || event.source !== opener || !SOURCE_ORIGINS.includes(event.origin) ||
+        data?.version !== 1 || data.device !== target || data.job !== job ||
+        !['panos-cache-source', 'panos-cache-error'].includes(data.type)) return;
+    cancel();
+    if (sourceRevision) return;
+    if (data.type === 'panos-cache-error') {
+      const messages = {
+        cache_updating: 'Configcache wordt bijgewerkt. Open Upload config opnieuw zodra de nieuwe kopie beschikbaar is.',
+        cache_set_unavailable: 'De cache heeft nog geen USB-config voor deze kopie. Controleer of de virtuele firewall online is en de console vrij is.',
+        cache_empty: 'Configcache heeft nog geen opgeslagen configuratie voor deze firewall.',
+        access_denied: 'Meld je opnieuw aan bij GNS3 om de configuratie te laden.',
+        invalid_token: 'Meld je opnieuw aan bij GNS3 om de configuratie te laden.',
+      };
+      const message = Object.hasOwn(messages, data.code) ? messages[data.code] :
+        'GNS3 kon geen geschikte opgeslagen configuratie klaarzetten.';
+      status(message, 'error', 'Bron ontbreekt');
+      return;
+    }
+    try {
+      const train = panosTrain(data.panosVersion);
+      const isoDate = typeof data.capturedAt === 'string' &&
+        /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,6})?(?:Z|[+-]\d\d:\d\d)$/.test(data.capturedAt);
+      const captured = isoDate ? Date.parse(data.capturedAt) : NaN;
+      if (!train || !Number.isFinite(captured) || !Number.isSafeInteger(data.skipped) || data.skipped < 0) {
+        throw Error('Ongeldige bronmetadata');
+      }
+      const commands = preparePAN(data.config);
+      cachedSource = {train};
+      configInput.value = commands.join('\n');
+      $('cacheSource').textContent = `Configcache van ${dateFormat.format(captured)} · PAN-OS ${data.panosVersion}` +
+        (data.skipped ? ` · ${data.skipped} onderdelen overgeslagen` : '') + ` · ${CACHE_TARGET_MODEL}-profiel`;
+      $('cacheSource').hidden = false;
+      showPrepared(commands);
+      status('Bekijk de klaargezette regels. Meld je aan op de fysieke firewall en klik op Naar candidate uploaden.',
+        'ready', 'Regels klaargezet');
+    } catch {
+      status('GNS3 gaf geen geldige PAN-OS-verzendlijst door.', 'error', 'Bron geweigerd');
+    }
+    if (consoleState === 'open' && !operation) showPromptHint();
+    render();
+  }
+
+  cancelCacheRequest = cancel;
+  window.addEventListener('message', receive);
+  status('De opgeslagen configuratie wordt opgehaald uit GNS3.', 'waiting', 'Configcache ophalen');
+  for (const origin of SOURCE_ORIGINS) {
+    opener.postMessage({version:1, type:'panos-cache-ready', device:target, job}, origin);
+  }
+}
+
 window.addEventListener('pagehide', () => {
   leaving = true;
+  cancelCacheRequest?.();
   operation?.controller.abort();
   session?.stop();
   checkedDevice = null;
+  cachedSource = null;
   clearReview();
   configInput.value = '';
   configFile.value = '';
@@ -440,7 +538,9 @@ window.addEventListener('pageshow', event => {
   if (event.persisted) location.reload();
 });
 
-if (targetKnown) $('targetDevice').textContent = target;
-else status('Open Upload config bij FW-NY of FW-BRU in GNS3.', 'error', 'Kies een firewall');
+if (targetKnown) {
+  $('targetDevice').textContent = target;
+  if (cacheRequested) requestCacheSource();
+} else status('Open Upload config bij FW-NY of FW-BRU in GNS3.', 'error', 'Kies een firewall');
 if (!serialAvailable) consoleMessage('Gebruik Chrome of Edge via HTTPS om een USB-console te openen.');
 render();

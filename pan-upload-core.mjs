@@ -164,7 +164,14 @@ export async function identifyPAN(exchange, {signal} = {}) {
   return (await inspectPAN(exchange, signal)).device;
 }
 
-export async function stagePAN(commands, exchange, {expectedDevice, signal, onProgress = () => {}} = {}) {
+export function panosTrain(version) {
+  if (typeof version !== 'string' || version.length > 32) return null;
+  return /^(\d{1,3}\.\d{1,3})(?:\.\d+(?:-[a-z0-9]+)*)?$/i.exec(version)?.[1] ?? null;
+}
+
+export async function stagePAN(commands, exchange, {
+  expectedDevice, requiredTrain, requiredModel, signal, onProgress = () => {},
+} = {}) {
   if (!Array.isArray(commands) || !commands.length) throw panError('PAN_INPUT', 'Voeg minstens één PAN-OS-set-opdracht toe.');
   const queue = Array.from(commands, (command, index) => checkedCommand(command, index + 1));
   checkInputSize(queue.join('\n'));
@@ -174,6 +181,13 @@ export async function stagePAN(commands, exchange, {expectedDevice, signal, onPr
   const {device, prompt} = await inspectPAN(exchange, signal);
   if (Object.keys(identityFields).some(field => device[field] !== expected[field])) {
     throw panError('PAN_IDENTITY', 'De aangesloten firewall komt niet meer overeen met de gecontroleerde firewall.');
+  }
+
+  if (requiredTrain !== undefined && (!requiredTrain || panosTrain(device.version) !== requiredTrain)) {
+    throw panError('PAN_VERSION', `De bron gebruikt PAN-OS ${requiredTrain}. De fysieke firewall draait PAN-OS ${device.version}. Uploaden vereist dezelfde PAN-OS-reeks.`);
+  }
+  if (requiredModel !== undefined && device.model.toUpperCase() !== requiredModel) {
+    throw panError('PAN_MODEL', `Het Configcache-profiel vereist een ${requiredModel}. De aangesloten firewall is een ${device.model}.`);
   }
 
   const diffCommand = 'show config diff';
