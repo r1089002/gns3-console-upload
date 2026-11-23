@@ -2,7 +2,7 @@ import {SERIAL_WRITES_ENABLED,SOURCE_ORIGINS} from './upload-settings.mjs?v=2026
 import {describeSNMP,iosReplyPrompt,prepareRunning,receiver,sendIOS,validSNMPCredential} from './upload-core.mjs?v=20261123-3';
 import {SerialSession,serialErrorMessage} from './upload-serial.mjs?v=20261123-1';
 import {ConsoleTranscript} from './upload-terminal.mjs?v=20261122-1';
-import {prepareCatalyst2960} from './ios-catalyst2960.mjs?v=20261123-1';
+import {prepareCatalyst2960} from './ios-catalyst2960.mjs?v=20261123-2';
 const $=id=>document.getElementById(id);let job=null,origin=null,accept=null,source=null,session=null,cleanupPending=false,ended=false,busy=false,operation=null,confirmed=0,receivedAt=null,ageTimer=null,ageMinute=-1;
 const saveFilter=$('hide-save-commands');
 const routingFilter=$('filter-no-ip-routing');
