@@ -1,6 +1,7 @@
 const EXEC_COMMANDS=['write','copy','save','erase','reload','format','delete','configure','do'];
 const BANNER_DELIMITERS=['#','%','~','|','$','@'];
 const BOOT_MARKER=/^boot-(?:start|end)-marker[ \t]*$/i;
+const STORAGE_COMPRESSION=/^service[ \t]+compress-config[ \t]*$/i;
 const INVALID_WIRE_CHAR=/[\x00-\x08\x0b-\x1f\x7f]/;
 const COPY_TO_STARTUP='copy running-config startup-config';
 const SUPPORTED_SAVE_COMMANDS=new Set(['write memory',COPY_TO_STARTUP]);
@@ -124,6 +125,7 @@ export function prepareRunning(raw,{excludeNoIpRouting=false,excludeVirtualSNMPE
  const excludedLines=new Set(),excludedLinesWithSaves=new Set();
  const noIpRoutingCommands=new Set();
  const snmpEngineIdCommands=new Set();
+ const compressionCommands=new Set();
  let hostname=null;
  for(;i<lines.length;i++){
   const line=lines[i].trim();if(!line||line.startsWith('!'))continue;
@@ -154,6 +156,10 @@ export function prepareRunning(raw,{excludeNoIpRouting=false,excludeVirtualSNMPE
    snmpEngineIdCommands.add(commands.length);
    if(excludeVirtualSNMPEngineId){excludedLines.add(i);excludedLinesWithSaves.add(i);}
   }
+  if(STORAGE_COMPRESSION.test(lines[i])){
+   compressionCommands.add(commands.length);
+   excludedLines.add(i);
+  }
   if(savesConfiguration(line)){
    excludedSaveCommands.push(line);
    excludedLines.add(i);
@@ -167,17 +173,24 @@ export function prepareRunning(raw,{excludeNoIpRouting=false,excludeVirtualSNMPE
   commands.push(line);
  }
  if(!hostname||!endsInConfigEnd(commands))throw Error('De running-config heeft geen geldige afsluiting.');
- const uploadCommands=commands.filter((_,index)=>!(excludeNoIpRouting&&noIpRoutingCommands.has(index))&&
-  !(excludeVirtualSNMPEngineId&&snmpEngineIdCommands.has(index)));
+ const uploadCommands=[],commandsWithSaves=[];
+ for(const [index,command] of commands.entries()){
+  if((excludeNoIpRouting&&noIpRoutingCommands.has(index))||
+     (excludeVirtualSNMPEngineId&&snmpEngineIdCommands.has(index)))continue;
+  commandsWithSaves.push(command);
+  if(!compressionCommands.has(index))uploadCommands.push(command);
+ }
  const config=excludedLines.size?lines.filter((_,index)=>!excludedLines.has(index)).join('\n'):raw;
  const configWithSaves=excludedLinesWithSaves.size?lines.filter((_,index)=>!excludedLinesWithSaves.has(index)).join('\n'):raw;
  return {
-  hostname,commands:uploadCommands,config,configWithSaves,saveCommands,excludedSaveCommands,
+  hostname,commands:uploadCommands,commandsWithSaves,config,configWithSaves,saveCommands,excludedSaveCommands,
+  excludedStorageSettings:compressionCommands.size,
   noIpRoutingCount:noIpRoutingCommands.size,snmpEngineIdCount:snmpEngineIdCommands.size,bytes:new TextEncoder().encode(raw).byteLength,
  };
 }
 export async function sendIOS(plan,exchange,{signal,includeSaveCommands=false,snmpProfile,onProgress=()=>{}}={}){
- const commands=Array.isArray(plan?.commands)?plan.commands.filter(line=>!snmpProfile||!SNMP_ENGINE.test(line)):[];
+ const configCommands=includeSaveCommands===true?(plan?.commandsWithSaves??plan?.commands):plan?.commands;
+ const commands=Array.isArray(configCommands)?configCommands.filter(line=>!snmpProfile||!SNMP_ENGINE.test(line)):[];
  if(!commands.every(validUploadCommand)||!endsInConfigEnd(commands))throw Error('De upload bevat een geblokkeerde of onvolledige opdracht.');
  if(snmpProfile&&(!describeSNMP(plan)||!validSNMPCredential(snmpProfile.auth)||!validSNMPCredential(snmpProfile.priv))){
   throw Error('Het SNMP-profiel of de ingevulde sleutels zijn ongeldig.');

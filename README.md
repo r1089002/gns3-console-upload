@@ -12,6 +12,8 @@ Bij een geslaagde overdracht of een IOS-weigering blijft de verbinding open voor
 
 **Opslagopdrachten uit de config filteren** staat standaard aangevinkt. Uitvinken neemt `write memory` en `copy running-config startup-config` mee als deze in de opgehaalde bron staan. De uploader voert ze na `end` uit, zodat de fysieke switch de configuratie ook voor een herstart bewaart. Andere opslagvarianten blijven gefilterd.
 
+Met het opslagfilter aan vervalt ook de zelfstandige globale regel `service compress-config` uit het voorbeeld en de overdracht. Met het opslagfilter uit verstuurt de uploader die regel op haar oorspronkelijke positie in de running-config.
+
 **L2-switch: no ip routing weglaten** verschijnt als de bron die zelfstandige IOS-opdracht bevat. Het vinkje staat bij elke nieuwe uploadpagina uit. Aanvinken verwijdert die opdracht uit het uploadvoorbeeld, de totaaltelling en de fysieke overdracht. Het opslagfilter werkt onafhankelijk.
 
 De uploader laat de twee zelfstandige exportmarkeringen `boot-start-marker` en `boot-end-marker` weg. Het voorbeeld en de opdrachtentelling volgen de verzendlijst. Echte `boot`-opdrachten behouden hun plaats. Bij een time-out meldt de pagina welke genummerde opdracht niet is bevestigd. Alleen commandonamen uit de lijst met veilige labels worden getoond.

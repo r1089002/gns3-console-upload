@@ -1,5 +1,5 @@
 import {SERIAL_WRITES_ENABLED,SOURCE_ORIGINS} from './upload-settings.mjs?v=20261028-3';
-import {describeSNMP,prepareRunning,receiver,sendIOS,validSNMPCredential} from './upload-core.mjs?v=20261123-1';
+import {describeSNMP,prepareRunning,receiver,sendIOS,validSNMPCredential} from './upload-core.mjs?v=20261123-2';
 import {SerialSession,serialErrorMessage} from './upload-serial.mjs?v=20261123-1';
 import {ConsoleTranscript} from './upload-terminal.mjs?v=20261122-1';
 const $=id=>document.getElementById(id);let job=null,origin=null,accept=null,source=null,session=null,cleanupPending=false,ended=false,busy=false,operation=null,confirmed=0,receivedAt=null,ageTimer=null,ageMinute=-1;
@@ -105,15 +105,18 @@ function renderUploadConfig(){
  const filtered=plan.excludedSaveCommands.length;
  const included=saveFilter.checked?0:plan.saveCommands.length;
  const config=saveFilter.checked?plan.config:plan.configWithSaves;
- const total=plan.commands.length+included+1+(snmpFilter.checked?snmpDescription.operationCount:0);
+ const commands=saveFilter.checked?plan.commands:plan.commandsWithSaves;
+ const total=commands.length+included+1+(snmpFilter.checked?snmpDescription.operationCount:0);
  $('config').textContent=config;
  $('detail').textContent=`${new TextEncoder().encode(config).byteLength.toLocaleString('nl-BE')} bytes · ${total} consoleopdrachten · hostname ${source.hostname}`;
  if(!$('upload-progress').value)$('upload-note').textContent=`0 van ${total} consoleopdrachten, inclusief configure terminal.`;
- $('save-upload-note').textContent=included
+ const saveNote=included
   ?`${included} ${included===1?'opslagopdracht wordt':'opslagopdrachten worden'} na de running-config uitgevoerd.`
   :filtered
    ?`${filtered} ${filtered===1?'opslagopdracht uit de config gefilterd.':'opslagopdrachten uit de config gefilterd.'}`
    :'Geen opslagopdrachten gevonden in deze running-config.';
+ $('save-upload-note').textContent=saveFilter.checked&&plan.excludedStorageSettings
+  ?`${saveNote} service compress-config wordt overgeslagen.` :saveNote;
  $('destination-save-title').textContent=included?'Ook opslaan voor herstart':'Alleen de running-config';
  $('destination-save-note').textContent=included
   ?'De opslagopdrachten schrijven de actieve configuratie naar de startup-config van de fysieke switch.'
