@@ -320,8 +320,8 @@ $('send').onclick = async event => {
   const plan = selectedUpload();
   if(plan.catalystChanges){
    const identity = await exchange('show version | include Model number|Cisco IOS Software');
-   if(!/^[ \t]*Model number[ \t]*:[ \t]*WS-C2960-24TT-L[ \t]*$/mi.test(identity.replace(/\r/g,'\n'))||!/\bVersion 15\.0\(2\)SE\d*\b/i.test(identity)){
-    throw Error('Dit profiel vereist een WS-C2960-24TT-L met IOS 15.0(2)SE.');
+   if(!/^[ \t]*Model number[ \t]*:[ \t]*WS-C2960-24(?:TT|TC)-L[ \t]*$/mi.test(identity.replace(/\r/g,'\n'))||!/\bVersion 15\.0\(2\)SE\d*\b/i.test(identity)){
+    throw Error('Dit profiel vereist IOS 15.0(2)SE op een WS-C2960-24TT-L of WS-C2960-24TC-L.');
    }
   }
   const result = await sendIOS(plan, exchange, {
