@@ -50,7 +50,10 @@ export class SerialSession {
    };
    const abort=()=>finish(reject,this.reason||Error('Afgebroken.'));
    signal.addEventListener('abort',abort,{once:true});
-   timer=setTimeout(()=>this.fail(Error('De consolebewerking duurde te lang; gestopt zonder herhaling.')),Math.max(0,deadline-now()));
+   timer=setTimeout(()=>{
+    const error=Object.assign(Error('De consolebewerking duurde te lang; gestopt zonder herhaling.'),{code:'SERIAL_TIMEOUT'});
+    this.fail(error);
+   },Math.max(0,deadline-now()));
    Promise.resolve(work).then(v=>finish(resolve,v),e=>finish(reject,e));
    if(signal.aborted)abort();
   });

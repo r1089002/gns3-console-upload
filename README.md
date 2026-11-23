@@ -14,6 +14,8 @@ Bij een geslaagde overdracht of een IOS-weigering blijft de verbinding open voor
 
 **L2-switch: no ip routing weglaten** verschijnt als de bron die zelfstandige IOS-opdracht bevat. Het vinkje staat bij elke nieuwe uploadpagina uit. Aanvinken verwijdert die opdracht uit het uploadvoorbeeld, de totaaltelling en de fysieke overdracht. Het opslagfilter werkt onafhankelijk.
 
+De uploader laat de twee zelfstandige exportmarkeringen `boot-start-marker` en `boot-end-marker` weg. Het voorbeeld en de opdrachtentelling volgen de verzendlijst. Echte `boot`-opdrachten behouden hun plaats. Bij een time-out meldt de pagina welke genummerde opdracht niet is bevestigd. Alleen commandonamen uit de lijst met veilige labels worden getoond.
+
 ## SNMP-profiel voor Zabbix
 
 Bij een Cisco-bron met de Zabbix-view, groep en beheer-ACL kun je **SNMP profiel** aanvinken. Open **SNMP-regels bekijken** om de regels te controleren. Vul de authenticatie- en encryptiesleutel van deze Zabbix-host in de twee wachtwoordvelden in. De uploader gebruikt ze lokaal voor de seriële overdracht en schermt ze af in het voorbeeld en de console.

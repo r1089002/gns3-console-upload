@@ -1,5 +1,6 @@
 const EXEC_COMMANDS=['write','copy','save','erase','reload','format','delete','configure','do'];
 const BANNER_DELIMITERS=['#','%','~','|','$','@'];
+const BOOT_MARKER=/^boot-(?:start|end)-marker[ \t]*$/i;
 const INVALID_WIRE_CHAR=/[\x00-\x08\x0b-\x1f\x7f]/;
 const COPY_TO_STARTUP='copy running-config startup-config';
 const SUPPORTED_SAVE_COMMANDS=new Set(['write memory',COPY_TO_STARTUP]);
@@ -107,6 +108,12 @@ function endsInConfigEnd(commands){
  return commands.at(-1)==='end'&&commands.findIndex(command=>words(command)[0]==='end')===commands.length-1;
 }
 
+function timeoutAtCommand(error,number,command){
+ if(error?.code!=='SERIAL_TIMEOUT')return error;
+ const label=DISPLAYABLE_IOS_ERRORS.has(command)||SUPPORTED_SAVE_COMMANDS.has(command)?` (${command})`:'';
+ return Object.assign(Error(`${error.message} Opdracht ${number}${label} is niet bevestigd.`,{cause:error}),{code:error.code});
+}
+
 export function prepareRunning(raw,{excludeNoIpRouting=false,excludeVirtualSNMPEngineId=false}={}){
  if(typeof raw!=='string'||raw.length>2*1024*1024||INVALID_WIRE_CHAR.test(raw.replace(/\r/g,'')))throw Error('Geen geldige tekstconfig ontvangen.');
  if(/^\s*</.test(raw)||/\b(?:MASKED|REDACTED|CHANGEME)\b|<(?:PASSWORD|SECRET|COMMUNITY|SNMP[^>]*)>/i.test(raw))throw Error('Dit is XML, een template of een gemaskeerde export.');
@@ -129,6 +136,12 @@ export function prepareRunning(raw,{excludeNoIpRouting=false,excludeVirtualSNMPE
    const command=`banner ${banner[1]} ${safe}${body}${safe}`;
    if(!safe||!validUploadCommand(command))throw Error('Banner kan niet veilig worden doorgestuurd.');
    commands.push(command);continue;
+  }
+  if(BOOT_MARKER.test(lines[i])){
+   if(commands.at(-1)==='end')throw Error('De running-config heeft geen geldige afsluiting.');
+   excludedLines.add(i);
+   excludedLinesWithSaves.add(i);
+   continue;
   }
   if(/^no[ \t]+ip[ \t]+routing[ \t]*$/i.test(lines[i])){
    noIpRoutingCommands.add(commands.length);
@@ -188,7 +201,7 @@ export async function sendIOS(plan,exchange,{signal,includeSaveCommands=false,sn
   let reply;
   try{reply=await exchange(command);}catch(error){
    if(sensitive)throw Error(`De SNMP-gebruikersregel kon niet worden bevestigd bij opdracht ${count+1}.`);
-   throw error;
+   throw timeoutAtCommand(error,count+1,command);
   }
   if(IOS_ERROR.test(reply)){
    const label=DISPLAYABLE_IOS_ERRORS.has(command)?` (${command})`:'';
@@ -221,10 +234,15 @@ export async function sendIOS(plan,exchange,{signal,includeSaveCommands=false,sn
  for(const command of saveCommands){
   check();
   const isCopy=command===COPY_TO_STARTUP;
-  let reply=await exchange(command,isCopy?{acceptAdditionalPrompt:text=>STARTUP_FILENAME_PROMPT.test(text)}:undefined);
-  if(isCopy&&!IOS_ERROR.test(reply)&&STARTUP_FILENAME_PROMPT.test(reply)){
-   check();
-   reply=await exchange('\r');
+  let reply;
+  try{
+   reply=await exchange(command,isCopy?{acceptAdditionalPrompt:text=>STARTUP_FILENAME_PROMPT.test(text)}:undefined);
+   if(isCopy&&!IOS_ERROR.test(reply)&&STARTUP_FILENAME_PROMPT.test(reply)){
+    check();
+    reply=await exchange('\r');
+   }
+  }catch(error){
+   throw timeoutAtCommand(error,count+1,command);
   }
   const tail=reply.replace(/\r/g,'\n').trimEnd().split('\n').at(-1)||'';
   if(IOS_ERROR.test(reply)||!EXEC_PROMPT.test(tail)||!/\[OK\]|\b\d+ bytes copied\b/i.test(reply)){

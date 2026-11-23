@@ -1,6 +1,6 @@
 import {SERIAL_WRITES_ENABLED,SOURCE_ORIGINS} from './upload-settings.mjs?v=20261028-3';
-import {describeSNMP,prepareRunning,receiver,sendIOS,validSNMPCredential} from './upload-core.mjs?v=20261122-3';
-import {SerialSession,serialErrorMessage} from './upload-serial.mjs?v=20261122-1';
+import {describeSNMP,prepareRunning,receiver,sendIOS,validSNMPCredential} from './upload-core.mjs?v=20261123-1';
+import {SerialSession,serialErrorMessage} from './upload-serial.mjs?v=20261123-1';
 import {ConsoleTranscript} from './upload-terminal.mjs?v=20261122-1';
 const $=id=>document.getElementById(id);let job=null,origin=null,accept=null,source=null,session=null,cleanupPending=false,ended=false,busy=false,operation=null,confirmed=0,receivedAt=null,ageTimer=null,ageMinute=-1;
 const saveFilter=$('hide-save-commands');
