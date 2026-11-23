@@ -12,6 +12,7 @@ const VIRTUAL_PORTS = new Map([
 const VIRTUAL_MMI_DEFAULTS = new Set([
   'mmi polling-interval 60', 'no mmi auto-configure', 'no mmi pvc', 'mmi snmp-timeout 180',
 ]);
+const DEVICE_LOCAL_DEFAULTS = new Set(['snmp-server chassis-id', 'no scheduler allocate']);
 const IPV6_DEFAULTS = new Set(['no ipv6 cef', 'ipv6 ioam timestamp']);
 const PPP_DEFAULT = 'multilink bundle-name authenticated';
 const EMPTY_VIRTUAL_STANZAS = new Set(['line aux 0', 'control-plane', 'redundancy']);
@@ -126,7 +127,7 @@ function writePortSettings(children, isCopper, newline, output, changes) {
 export function prepareC8200L(rawConfig) {
   const changes = {
     mmi: 0, interfaces: 0, references: 0, media: 0, speedDuplex: 0, negotiation: 0, enabledInterfaces: 0,
-    ipv4CefDefault: 0, ipv6Defaults: 0, pppDefaults: 0, emptyStanzas: 0,
+    ipv4CefDefault: 0, ipv6Defaults: 0, pppDefaults: 0, emptyStanzas: 0, deviceDefaults: 0,
   };
   const observed = { virtual: false, physical: false };
   const mappedHeaders = new Set();
@@ -140,6 +141,8 @@ export function prepareC8200L(rawConfig) {
       changes.mmi++;
     } else if (globalCommand === 'ip cef') {
       changes.ipv4CefDefault++;
+    } else if (DEVICE_LOCAL_DEFAULTS.has(globalCommand)) {
+      changes.deviceDefaults++;
     } else if (!features.ipv6 && IPV6_DEFAULTS.has(globalCommand)) {
       changes.ipv6Defaults++;
     } else if (!features.ppp && globalCommand === PPP_DEFAULT) {
