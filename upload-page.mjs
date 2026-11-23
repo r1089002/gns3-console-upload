@@ -1,18 +1,22 @@
 import {SERIAL_WRITES_ENABLED,SOURCE_ORIGINS} from './upload-settings.mjs?v=20261028-3';
-import {describeSNMP,iosReplyPrompt,prepareRunning,receiver,sendIOS,validSNMPCredential} from './upload-core.mjs?v=20261123-4';
+import {describeSNMP,iosReplyPrompt,prepareRunning,receiver,sendIOS,validSNMPCredential} from './upload-core.mjs?v=20261123-5';
 import {SerialSession,serialErrorMessage} from './upload-serial.mjs?v=20261123-1';
 import {ConsoleTranscript} from './upload-terminal.mjs?v=20261122-1';
 import {prepareCatalyst2960} from './ios-catalyst2960.mjs?v=20261123-3';
+import {prepareC8200L} from './ios-c8200l.mjs?v=20261123-1';
 const $=id=>document.getElementById(id);let job=null,origin=null,accept=null,source=null,session=null,cleanupPending=false,ended=false,busy=false,operation=null,confirmed=0,receivedAt=null,ageTimer=null,ageMinute=-1;
 const saveFilter=$('hide-save-commands');
 const routingFilter=$('filter-no-ip-routing');
 const catalystFilter=$('catalyst2960-profile');
+const c8200lFilter=$('c8200l-profile');
+let uploadPlan=null;
 const snmpFilter=$('snmp-profile');
 const snmpAuth=$('snmp-auth');
 const snmpPriv=$('snmp-priv');
 let snmpDescription=null;
 routingFilter.checked=false;
 catalystFilter.checked=false;
+c8200lFilter.checked=false;
 snmpFilter.checked=false;
 const consoleInput = $('console-input');
 const consoleOutput = $('console-output');
@@ -38,10 +42,10 @@ function updateSend(){
  const authReady=validSNMPCredential(snmpAuth.value);
  const privReady=validSNMPCredential(snmpPriv.value);
  const snmpReady=snmpDescription&&authReady&&privReady;
- $('send').disabled=!SERIAL_WRITES_ENABLED||!serialAvailable()||!source||busy||cleanupPending||writingManually||consoleState!=='open'||!transcript.ready||(snmpFilter.checked&&!snmpReady);
+ $('send').disabled=!SERIAL_WRITES_ENABLED||!serialAvailable()||!source||!uploadPlan||busy||cleanupPending||writingManually||consoleState!=='open'||!transcript.ready||(snmpFilter.checked&&!snmpReady);
  saveFilter.disabled=busy||cleanupPending;
  routingFilter.disabled=busy||cleanupPending;
- catalystFilter.disabled=busy||cleanupPending;
+ catalystFilter.disabled=c8200lFilter.disabled=busy||cleanupPending;
  snmpFilter.disabled=!snmpDescription||busy||cleanupPending;
  snmpAuth.disabled=snmpPriv.disabled=snmpFilter.disabled||!snmpFilter.checked;
  snmpAuth.setAttribute('aria-invalid',String(Boolean(snmpAuth.value&&!authReady)));
@@ -79,6 +83,13 @@ function renderConsole() {
 function selectedUpload(){
  const excludeNoIpRouting=Boolean(routingFilter.checked&&source.noIpRoutingCount);
  const excludeVirtualSNMPEngineId=Boolean(snmpFilter.checked&&snmpDescription?.excludesEngineId);
+ if(c8200lFilter.checked){
+  const router=prepareC8200L(source.rawConfig);
+  return {
+   ...prepareRunning(router.config,{excludeNoIpRouting,excludeVirtualSNMPEngineId,excludeVersionHeader:true}),
+   c8200lChanges:router.changes,
+  };
+ }
  if(catalystFilter.checked){
   const catalyst=prepareCatalyst2960(source.rawConfig);
   return {...prepareRunning(catalyst.config,{excludeNoIpRouting,excludeVirtualSNMPEngineId}),catalystChanges:catalyst.changes};
@@ -108,16 +119,36 @@ function renderSNMP(){
  else note.textContent='Vink aan om de Zabbix-gebruiker mee te sturen.';
 }
 function renderUploadConfig(){
+ uploadPlan=null;
+ const provider=source?.hostname.toUpperCase()==='R-PROVIDER';
  $('save-control').hidden=!source;
  $('routing-control').hidden=!source?.noIpRoutingCount;
- $('catalyst2960-control').hidden=!source;
+ $('catalyst2960-control').hidden=!source||provider;
+ $('c8200l-control').hidden=!provider;
  renderSNMP();
  if(!source){
   $('config').textContent='';
   $('config-details').open=false;
   return;
  }
- const plan=selectedUpload();
+ const routerNote=$('c8200l-note');
+ routerNote.textContent='R-Provider volgens Rack 4. NY gebruikt RJ45 op Gi0/0/0 en Gi0/0/1. BRU gebruikt SFP op Gi0/0/2 en Gi0/0/3.';
+ try {
+  uploadPlan=selectedUpload();
+ } catch(error) {
+  if(!c8200lFilter.checked)throw error;
+  routerNote.textContent=error.message;
+  $('config').textContent='';
+  $('config-details').open=false;
+  $('detail').textContent='Geen verzendlijst voor dit routerprofiel.';
+  $('upload-note').textContent='Kies een bruikbare config voor dit profiel.';
+  updateSend();
+  return;
+ }
+ const plan=uploadPlan;
+ if(plan.c8200lChanges){
+  routerNote.textContent+=' Actieve bronpoorten krijgen no shutdown. Controleer de verzendlijst voor de upload.';
+ }
  const filtered=plan.excludedSaveCommands.length;
  const included=saveFilter.checked?0:plan.saveCommands.length;
  const config=saveFilter.checked?plan.config:plan.configWithSaves;
@@ -147,6 +178,7 @@ function renderUploadConfig(){
    ?'Deze regel wordt overgeslagen in de fysieke upload.'
    :routingCount+' regels worden overgeslagen in de fysieke upload.'
   :'Vink aan als je fysieke Layer 2-switch deze IOS-opdracht weigert.';
+ updateSend();
 }
 function refreshAge(){if(receivedAt===null)return;const minutes=Math.max(0,Math.floor((Date.now()-receivedAt)/60000));if(minutes!==ageMinute){ageMinute=minutes;$('source-age').textContent=minutes===0?'zojuist':`${minutes} min geleden`;}}
 function failed(message){ended=true;accept=null;clearTimeout(timeout);phase('error','Ophalen mislukt');status(message);$('fetch-progress').value=0;$('fetch-value').textContent='Mislukt';source=null;renderUploadConfig();updateSend();}
@@ -295,6 +327,20 @@ consoleInput.onkeydown = event => {
  }
 };
 
+async function verifyC8200L(exchange) {
+ const identity=(await exchange('show version | include Cisco IOS XE Software| C8200')).replace(/\r/g,'\n');
+ const model=/^[ \t]*cisco[ \t]+C8200L-1N-4T[ \t]+(?:\([^\n)]*\)[ \t]+)?processor\b/im;
+ const version=/^[ \t]*Cisco IOS XE Software,[ \t]+Version 17\.12(?:\.\d+[a-z]?)?[ \t]*$/im;
+ if(!model.test(identity)||!version.test(identity)){
+  throw Error('Dit profiel vereist een C8200L-1N-4T met IOS XE 17.12.');
+ }
+ const ports=await exchange('show ip interface brief | include ^GigabitEthernet0/0/');
+ const onboard=new Set(Array.from(ports.matchAll(/(?:^|[\r\n])GigabitEthernet0\/0\/([0-3])[ \t]+/gi),match=>match[1]));
+ if(onboard.size!==4){
+  throw Error('De vier ingebouwde poorten Gi0/0/0 tot Gi0/0/3 konden niet worden bevestigd.');
+ }
+}
+
 $('send').onclick = async event => {
  if (!event.isTrusted || $('send').disabled || !session || !source || leaving) return;
  const owned = session;
@@ -324,7 +370,10 @@ $('send').onclick = async event => {
     acceptAdditionalPrompt: reply => Boolean(iosReplyPrompt(reply)) || options?.acceptAdditionalPrompt?.(reply)
    });
   };
-  const plan = selectedUpload();
+  const plan = uploadPlan;
+  if(plan.c8200lChanges){
+   await verifyC8200L(exchange);
+  }
   if(plan.catalystChanges){
    const identity = await exchange('show version | include Model number|Cisco IOS Software');
    if(!/^[ \t]*Model number[ \t]*:[ \t]*WS-C2960-24(?:TT|TC)-L[ \t]*$/mi.test(identity.replace(/\r/g,'\n'))||!/\bVersion 15\.0\(2\)SE\d*\b/i.test(identity)){
@@ -396,6 +445,7 @@ function leavePage() {
 saveFilter.onchange = renderUploadConfig;
 routingFilter.onchange = renderUploadConfig;
 catalystFilter.onchange = renderUploadConfig;
+c8200lFilter.onchange = renderUploadConfig;
 snmpFilter.onchange = () => {
  if(!snmpFilter.checked)clearSNMPCredentials();
  renderUploadConfig();

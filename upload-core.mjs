@@ -127,7 +127,7 @@ function timeoutAtCommand(error,number,command){
  return Object.assign(Error(`${error.message} Opdracht ${number}${label} is niet bevestigd.`,{cause:error}),{code:error.code});
 }
 
-export function prepareRunning(raw,{excludeNoIpRouting=false,excludeVirtualSNMPEngineId=false}={}){
+export function prepareRunning(raw,{excludeNoIpRouting=false,excludeVirtualSNMPEngineId=false,excludeVersionHeader=false}={}){
  if(typeof raw!=='string'||raw.length>2*1024*1024||INVALID_WIRE_CHAR.test(raw.replace(/\r/g,'')))throw Error('Geen geldige tekstconfig ontvangen.');
  if(/^\s*</.test(raw)||/\b(?:MASKED|REDACTED|CHANGEME)\b|<(?:PASSWORD|SECRET|COMMUNITY|SNMP[^>]*)>/i.test(raw))throw Error('Dit is XML, een template of een gemaskeerde export.');
  const lines=raw.replace(/\r\n?/g,'\n').split('\n');let i=0;
@@ -135,6 +135,11 @@ export function prepareRunning(raw,{excludeNoIpRouting=false,excludeVirtualSNMPE
  if(!/^version\s+\S/.test(lines[i]||''))throw Error('Geen volledige IOS running-config ontvangen.');
  const commands=[],saveCommands=[],excludedSaveCommands=[];
  const excludedLines=new Set(),excludedLinesWithSaves=new Set();
+ if(excludeVersionHeader){
+  excludedLines.add(i);
+  excludedLinesWithSaves.add(i);
+  i++;
+ }
  const noIpRoutingCommands=new Set();
  const snmpEngineIdCommands=new Set();
  const compressionCommands=new Set();

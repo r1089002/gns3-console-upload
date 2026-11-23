@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="nl"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Upload config · Project 2026</title><link rel="stylesheet" href="style.css?v=20261123-1"><script type="module" src="upload-page.mjs?v=20261123-7"></script></head>
+<html lang="nl"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Upload config · Project 2026</title><link rel="stylesheet" href="style.css?v=20261123-1"><script type="module" src="upload-page.mjs?v=20261123-8"></script></head>
 <body><main class="upload-app" id="app" data-phase="waiting">
 <header class="app-header"><a class="app-brand" href="./upload.html"><span class="brand-icon" aria-hidden="true">⇧</span><span>PROJECT 2026<small>GNS3 · CONSOLE TRANSFER</small></span></a><span class="connection-pill"><span></span> Config blijft in je browser</span></header>
 <section class="page-heading"><p class="eyebrow">VAN VIRTUEEL NAAR FYSIEK</p><h1>Upload je configuratie.</h1><p class="intro">De actuele running-config uit GNS3, rechtstreeks naar je fysieke toestel via USB-console.</p></section>
@@ -16,6 +16,10 @@
 <div class="save-control" id="catalyst2960-control" hidden>
 <label class="save-option"><input id="catalyst2960-profile" type="checkbox" autocomplete="off" aria-controls="config" aria-describedby="catalyst2960-note"> Catalyst 2960-24TT-L / 24TC-L met IOS 15.0(2)SE</label>
 <p id="catalyst2960-note" class="progress-note" aria-live="polite"></p>
+</div>
+<div class="save-control" id="c8200l-control" hidden>
+<label class="save-option"><input id="c8200l-profile" type="checkbox" autocomplete="off" aria-controls="config" aria-describedby="c8200l-note"> C8200L-1N-4T met IOS XE 17.12</label>
+<p id="c8200l-note" class="progress-note" aria-live="polite"></p>
 </div>
 <div class="save-control" id="snmp-control" hidden>
 <label class="save-option"><input id="snmp-profile" type="checkbox" autocomplete="off" aria-controls="snmp-credentials" aria-describedby="snmp-note"> SNMP profiel</label>
