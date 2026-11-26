@@ -5,6 +5,7 @@ const GLOBAL_REFERENCE = new RegExp(
   String.raw`^((?:ip[ \t]+route[ \t]+${IPV4}[ \t]+${IPV4}|ip[ \t]+tftp[ \t]+source-interface|logging[ \t]+source-interface|ntp[ \t]+source)[ \t]+)${GIGABIT_PORT}([ \t].*)?$`,
   'i',
 );
+const ROUTING_REFERENCE = new RegExp(String.raw`^([ \t]+(?:no[ \t]+)?passive-interface[ \t]+)${GIGABIT_PORT}([ \t]*)$`, 'i');
 const BANNER = /^banner[ \t]+\S+[ \t]+(\^[A-Za-z@\[\\\]^_?]|.)(.*)$/i;
 const VIRTUAL_PORTS = new Map([
   ['0/0', '0/0/0'], ['0/1', '0/0/1'], ['0/2', '0/0/2'], ['0/3', '0/0/3'],
@@ -150,6 +151,20 @@ export function prepareC8200L(rawConfig) {
     } else if (EMPTY_VIRTUAL_STANZAS.has(globalCommand) &&
                children.every(child => !child.line.trim() || child.line.trimStart().startsWith('!'))) {
       changes.emptyStanzas++;
+    } else if (globalCommand.startsWith('router ')) {
+      output.push(line, newline);
+      for (const child of children) {
+        const match = ROUTING_REFERENCE.exec(child.line);
+        const port = match ? rackPort(match[3], observed) : undefined;
+        if (port) {
+          const [, prefix, name, , suffix = '', tail] = match;
+          output.push(prefix, name, port, suffix, tail, child.newline);
+          changes.references++;
+        } else {
+          output.push(child.line, child.newline);
+        }
+      }
+      continue;
     } else {
       const match = INTERFACE.exec(line) ?? GLOBAL_REFERENCE.exec(line);
       const port = match ? rackPort(match[3], observed) : undefined;

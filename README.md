@@ -1,12 +1,18 @@
 # GNS3 Console Upload
 
-Statische HTTPS-pagina voor de menuactie **Upload config** bij Cisco-switches in GNS3. Open via GNS3; los openen bevat geen bronconfig.
+Statische HTTPS-pagina voor de menuactie **Upload config** bij Cisco-toestellen in GNS3. Open de pagina vanuit GNS3 om de bronconfig te ontvangen.
 
 ## Fysieke console en upload
 
 Gebruik Chrome of Edge op de laptop met de USB-consolekabel. Sluit PuTTY en kies bij **Fysieke console** de juiste snelheid (standaard 9600 baud). Klik op **Verbinden** en selecteer de COM-poort. De verbinding opent zonder bytes te versturen. Druk zelf op **Enter** om de prompt op te vragen. Gebruik `show version` om het toestel te controleren, `enable` om van `>` naar `#` te gaan en `end` om configuratiemodus te verlaten. De terminal biedt ook spatie bij `--More--` en Ctrl+C.
 
-Een geldige GNS3-bronconfig, de gewone IOS-`#`-prompt en een klik op **Upload naar switch** starten de overdracht. De uploader controleert de prompt opnieuw op dezelfde COM-verbinding en vergrendelt de invoer zolang hij zelf schrijft. De console toont veilige IOS-antwoorden en foutmeldingen live. Willekeurige teruggekaatste configuratieregels en geheime wachtwoordinvoer worden afgeschermd.
+Typ bij een IOS-prompt het begin van een commando en druk op **Tab**. IOS vult een unieke afkorting aan in het invoerveld. Gebruik **Enter** om het commando uit te voeren. Dit gebruikt de standaard CLI-lijnbewerking van IOS.
+
+De Cisco-console toont de seriële uitvoer inclusief gevoelige regels en teruggestuurde commando’s. Wachtwoorden zijn zichtbaar in het invoerveld terwijl je typt. Na Enter toont het transcript wat IOS zelf terugstuurt.
+
+Een geldige GNS3-bronconfig, de gewone IOS-`#`-prompt en een klik op **Upload naar router** of **Upload naar switch** starten de overdracht. De uploader controleert de prompt opnieuw op dezelfde COM-verbinding en vergrendelt de invoer zolang hij zelf schrijft.
+
+Bij R-CHI1, R-NY en R-Provider staat het profiel **C8200L-1N-4T met IOS XE 17.12** standaard aan. Het vertaalt de Rack 4-poortnamen in interfaceblokken, subinterfaces, routes en OSPF-regels. Voor de overdracht controleert de pagina het model, de IOS XE-versie en de vier ingebouwde poorten. Bij switches kun je het Catalyst 2960-profiel zelf aanvinken.
 
 Bij een geslaagde overdracht of een IOS-weigering blijft de verbinding open voor handmatige controle. Wie opnieuw wil uploaden nadat `configure terminal` is aangeboden, opent een nieuwe bron via GNS3. **Verbreken** sluit de verbinding. **Upload stoppen**, een I/O-time-out of verlies van de poort sluit de verbinding en bewaakt de vrijgave.
 
@@ -20,7 +26,7 @@ De uploader laat de twee zelfstandige exportmarkeringen `boot-start-marker` en `
 
 ## SNMP-profiel voor Zabbix
 
-Bij een Cisco-bron met de Zabbix-view, groep en beheer-ACL kun je **SNMP profiel** aanvinken. Open **SNMP-regels bekijken** om de regels te controleren. Vul de authenticatie- en encryptiesleutel van deze Zabbix-host in de twee wachtwoordvelden in. De uploader gebruikt ze lokaal voor de seriële overdracht en schermt ze af in het voorbeeld en de console.
+Bij een Cisco-bron met de Zabbix-view, groep en beheer-ACL kun je **SNMP profiel** aanvinken. Vul de authenticatie- en encryptiesleutel van deze Zabbix-host in en controleer de regels onder **SNMP-regels bekijken**. De ingevulde sleutels zijn leesbaar in de invoervelden en het voorbeeld. De uploader gebruikt ze lokaal voor de seriële overdracht.
 
 De uploader controleert eerst de SNMPv3-gebruiker op het fysieke toestel. Hij behoudt een passend account of maakt de ontbrekende gebruiker na de gewone configuratie aan. Het fysieke toestel behoudt zijn eigen Engine ID. De gebruiker wordt vóór eventuele opslag opnieuw via de console gecontroleerd. Controleer de werkelijke uitlezing daarna in Zabbix.
 

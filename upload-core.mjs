@@ -45,7 +45,7 @@ export function validSNMPCredential(value){
  return typeof value==='string'&&/^[A-Za-z0-9!_-]{8,64}$/.test(value)&&!/^change[-_]?me$/i.test(value);
 }
 
-export function describeSNMP(plan){
+export function describeSNMP(plan,{auth='[afgeschermd]',priv='[afgeschermd]'}={}){
  const commands=Array.isArray(plan?.commands)?plan.commands:[];
  const groups=commands.filter(line=>SNMP_GROUP_DECLARATION.test(line));
  const conflicts=commands.some(line=>SNMP_CONFLICT.test(line)&&!SNMP_ENGINE.test(line));
@@ -61,7 +61,7 @@ export function describeSNMP(plan){
  }
  if(!aclLines.some(line=>SNMP_ACL_PERMIT.test(line))) return null;
  return {
-  lines:[commands[view],groups[0],commands[acl],...aclLines.map(line=>' '+line),snmpUserCommand('[afgeschermd]','[afgeschermd]')],
+  lines:[commands[view],groups[0],commands[acl],...aclLines.map(line=>' '+line),snmpUserCommand(auth,priv)],
   operationCount:3,
   excludesEngineId:plan.snmpEngineIdCount>0||commands.some(line=>SNMP_ENGINE.test(line)),
  };

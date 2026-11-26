@@ -1,9 +1,9 @@
 import {SERIAL_WRITES_ENABLED,SOURCE_ORIGINS} from './upload-settings.mjs?v=20261028-3';
-import {describeSNMP,iosReplyPrompt,prepareRunning,receiver,sendIOS,validSNMPCredential} from './upload-core.mjs?v=20261123-5';
-import {SerialSession,serialErrorMessage} from './upload-serial.mjs?v=20261123-1';
-import {ConsoleTranscript} from './upload-terminal.mjs?v=20261122-1';
+import {describeSNMP,iosReplyPrompt,prepareRunning,receiver,sendIOS,validSNMPCredential} from './upload-core.mjs?v=20261126-1';
+import {SerialSession,serialErrorMessage} from './upload-serial.mjs?v=20261126-1';
+import {ConsoleTranscript,iosCompletion} from './upload-terminal.mjs?v=20261126-1';
 import {prepareCatalyst2960} from './ios-catalyst2960.mjs?v=20261123-3';
-import {prepareC8200L} from './ios-c8200l.mjs?v=20261123-3';
+import {prepareC8200L} from './ios-c8200l.mjs?v=20261126-1';
 const $=id=>document.getElementById(id);let job=null,origin=null,accept=null,source=null,session=null,cleanupPending=false,ended=false,busy=false,operation=null,confirmed=0,receivedAt=null,ageTimer=null,ageMinute=-1;
 const saveFilter=$('hide-save-commands');
 const routingFilter=$('filter-no-ip-routing');
@@ -14,6 +14,7 @@ const snmpFilter=$('snmp-profile');
 const snmpAuth=$('snmp-auth');
 const snmpPriv=$('snmp-priv');
 let snmpDescription=null;
+const routerName = /^R-/i;
 routingFilter.checked=false;
 catalystFilter.checked=false;
 c8200lFilter.checked=false;
@@ -25,24 +26,28 @@ const consoleStates = {
  open: 'Verbonden', closing: 'Poort vrijgeven', blocked: 'Poortstatus onbekend'
 };
 let consoleState = 'closed';
-let transcript = new ConsoleTranscript();
+let transcript = new ConsoleTranscript({showSensitive:true});
+let enteringPassword = false;
 let writingManually = false;
 let leaving = false;
 const serialAvailable=()=>!!navigator.serial&&isSecureContext;
 function status(value){$('status').textContent=value;}
 function setSourceName(name) {
  $('name').textContent = name;
- const device = /^R-/i.test(name) ? 'router' : /^(?:S|SW)-/i.test(name) ? 'switch' : 'toestel';
+ const device = routerName.test(name.trim()) ? 'router' : /^(?:S|SW)-/i.test(name) ? 'switch' : 'toestel';
  const destination = device === 'toestel' ? 'fysiek toestel' : 'fysieke ' + device;
  $('send-label').textContent = 'Upload naar ' + device;
  $('upload-destination').textContent = 'Upload naar ' + destination;
+}
+function isRouterSource() {
+ return [source?.name, source?.hostname].some(name => name && routerName.test(name.trim()));
 }
 function phase(value,label){$('app').dataset.phase=value;$('phase-badge').textContent=label;const step=value==='fetching'||value==='waiting'?'fetch':value==='ready'?'ready':value==='error'&&$('fetch-progress').value<100?'fetch':'upload';for(const key of ['fetch','ready','upload']){const el=$('step-'+key);el.toggleAttribute('data-active',key===step);if(key===step)el.setAttribute('aria-current','step');else el.removeAttribute('aria-current');}}
 function updateSend(){
  const authReady=validSNMPCredential(snmpAuth.value);
  const privReady=validSNMPCredential(snmpPriv.value);
  const snmpReady=snmpDescription&&authReady&&privReady;
- $('send').disabled=!SERIAL_WRITES_ENABLED||!serialAvailable()||!source||!uploadPlan||busy||cleanupPending||writingManually||consoleState!=='open'||!transcript.ready||(snmpFilter.checked&&!snmpReady);
+ $('send').disabled=!SERIAL_WRITES_ENABLED||!serialAvailable()||!source||!uploadPlan||busy||cleanupPending||writingManually||consoleState!=='open'||!transcript.ready||enteringPassword||(snmpFilter.checked&&!snmpReady);
  saveFilter.disabled=busy||cleanupPending;
  routingFilter.disabled=busy||cleanupPending;
  catalystFilter.disabled=c8200lFilter.disabled=busy||cleanupPending;
@@ -64,9 +69,9 @@ function renderConsole() {
  $('console-connect').disabled = !SERIAL_WRITES_ENABLED || !serialAvailable() || busy ||
   writingManually || (consoleState !== 'closed' && !open);
  $('baud').disabled = consoleState !== 'closed';
- const maskInput = transcript.password || (consoleInput.type === 'password' && consoleInput.value !== '');
- $('console-prompt').textContent = maskInput ? 'Password:' : transcript.prompt || '—';
- consoleInput.type = maskInput ? 'password' : 'text';
+ enteringPassword = transcript.password || (enteringPassword && consoleInput.value !== '');
+ $('console-prompt').textContent = enteringPassword ? 'Password:' : transcript.prompt || '—';
+ consoleInput.placeholder = enteringPassword ? 'Wachtwoord' : 'Commando of reactie';
  consoleInput.disabled = !manual || transcript.more;
  $('console-enter').disabled = consoleInput.disabled;
  $('console-interrupt').disabled = !manual;
@@ -97,9 +102,17 @@ function selectedUpload(){
  return excludeNoIpRouting||excludeVirtualSNMPEngineId
   ?prepareRunning(source.rawConfig,{excludeNoIpRouting,excludeVirtualSNMPEngineId}) :source;
 }
-function clearSNMPCredentials(){
- snmpAuth.value='';
- snmpPriv.value='';
+function renderSNMPPreview() {
+ const preview = snmpDescription && describeSNMP(source, {
+  auth: snmpAuth.value || '<authenticatiesleutel>',
+  priv: snmpPriv.value || '<encryptiesleutel>',
+ });
+ $('snmp-preview').textContent = preview?.lines.join('\n') || '';
+}
+function clearSNMPCredentials() {
+ snmpAuth.value = '';
+ snmpPriv.value = '';
+ renderSNMPPreview();
 }
 function renderSNMP(){
  snmpDescription=source?describeSNMP(source):null;
@@ -111,7 +124,7 @@ function renderSNMP(){
   clearSNMPCredentials();
  }
  $('snmp-credentials').hidden=!snmpFilter.checked;
- $('snmp-preview').textContent=snmpDescription?.lines.join('\n')||'';
+ renderSNMPPreview();
  const note=$('snmp-note');
  if(!snmpDescription) note.textContent='Voor deze bron is geen compleet SNMPv3-profiel beschikbaar.';
  else if(snmpFilter.checked) note.textContent='Vul de twee SNMPv3-sleutels voor dit toestel in. Gebruik per sleutel 8 tot 64 tekens met letters, cijfers, !, _ of -.'
@@ -120,11 +133,11 @@ function renderSNMP(){
 }
 function renderUploadConfig(){
  uploadPlan=null;
- const provider=source?.hostname.toUpperCase()==='R-PROVIDER';
+ const router = isRouterSource();
  $('save-control').hidden=!source;
  $('routing-control').hidden=!source?.noIpRoutingCount;
- $('catalyst2960-control').hidden=!source||provider;
- $('c8200l-control').hidden=!provider;
+ $('catalyst2960-control').hidden=!source||router;
+ $('c8200l-control').hidden=!router;
  renderSNMP();
  if(!source){
   $('config').textContent='';
@@ -132,7 +145,7 @@ function renderUploadConfig(){
   return;
  }
  const routerNote=$('c8200l-note');
- routerNote.textContent='R-Provider volgens Rack 4. NY gebruikt RJ45 op Gi0/0/0 en Gi0/0/1. BRU gebruikt SFP op Gi0/0/2 en Gi0/0/3.';
+ routerNote.textContent='Het Rack 4-profiel vertaalt Gi0/0 t/m Gi0/3 naar Gi0/0/0 t/m Gi0/0/3. Het toestelmodel en de IOS XE-versie worden vóór de upload gecontroleerd.';
  try {
   uploadPlan=selectedUpload();
  } catch(error) {
@@ -189,7 +202,36 @@ window.addEventListener('message',e=>{
  if(e.origin!==origin||d.job!==job)return;
  if(d.type==='error'){failed(d.code==='node_not_running'?'Het virtuele toestel staat uit. Start hem eerst; er is geen oude config gebruikt.':'Ophalen mislukt ('+String(d.code).replace(/[^a-z_]/g,'').slice(0,50)+'). Open de knop opnieuw.');return;}
  if(d.type==='status'){phase('fetching','Running-config ophalen');$('fetch-progress').removeAttribute('value');$('fetch-value').textContent='Bezig';$('fetch-note').textContent='Het toestel wordt uitgelezen. Een percentage is pas bekend als de volledige config ontvangen is.';status(d.state==='credentials'?'Vul de tijdelijke exportgegevens in het GNS3-venster in.':'Actuele running-config wordt opgehaald…');return;}
- try{const data=accept?.(e);if(!data)return;source=data;ended=true;accept=null;clearTimeout(timeout);setSourceName(data.name);renderUploadConfig();receivedAt=Date.now();$('received-at').dateTime=new Date(receivedAt).toISOString();$('received-at').textContent=new Date(receivedAt).toLocaleTimeString('nl-BE',{hour:'2-digit',minute:'2-digit',second:'2-digit'});$('source-freshness').hidden=false;refreshAge();ageTimer=setInterval(refreshAge,30000);$('fetch-progress').value=100;$('fetch-value').textContent='100%';$('fetch-note').textContent=data.prepared?'Uploadconfig gecontroleerd; bekende labwachtwoorden in klare tekst.':'Volledige running-config ontvangen en gecontroleerd.';phase('ready','Gereed voor upload');status(data.prepared?'Uploadconfig staat klaar. Bekende labwachtwoorden gaan in klare tekst mee.':'Running-config staat klaar. Verbinden en klaarzetten doe je in de fysieke console.');if(data.prepared)$('config-details').querySelector('summary').firstChild.textContent='Uploadconfig bekijken ';$('browser-note').textContent=!serialAvailable()?'Gebruik Chrome of Edge op je laptop om via USB-console te uploaden.':!SERIAL_WRITES_ENABLED?'Verzenden is uitgeschakeld.':'De configuratie wordt pas verstuurd nadat jij de upload start.';updateSend();}catch{failed('De opgehaalde bron is geen volledige bruikbare IOS running-config. Niets verstuurd.');}
+ try {
+  const data = accept?.(e);
+  if (!data) return;
+  source = data;
+  c8200lFilter.checked = isRouterSource();
+  ended = true;
+  accept = null;
+  clearTimeout(timeout);
+  setSourceName(data.name);
+  renderUploadConfig();
+  receivedAt = Date.now();
+  $('received-at').dateTime = new Date(receivedAt).toISOString();
+  $('received-at').textContent = new Date(receivedAt).toLocaleTimeString('nl-BE', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  $('source-freshness').hidden = false;
+  refreshAge();
+  ageTimer = setInterval(refreshAge, 30000);
+  $('fetch-progress').value = 100;
+  $('fetch-value').textContent = '100%';
+  $('fetch-note').textContent = data.prepared
+   ? 'Uploadconfig gecontroleerd. Bekende labwachtwoorden staan in klare tekst.' : 'Volledige running-config ontvangen en gecontroleerd.';
+  phase('ready','Gereed voor upload');
+  status(data.prepared ? 'Uploadconfig staat klaar. Bekende labwachtwoorden gaan in klare tekst mee.'
+   : 'Running-config staat klaar. Verbinden en klaarzetten doe je in de fysieke console.');
+  if (data.prepared) $('config-details').querySelector('summary').firstChild.textContent = 'Uploadconfig bekijken ';
+  $('browser-note').textContent = !serialAvailable() ? 'Gebruik Chrome of Edge op je laptop om via USB-console te uploaden.'
+   : !SERIAL_WRITES_ENABLED ? 'Verzenden is uitgeschakeld.' : 'De configuratie wordt pas verstuurd nadat jij de upload start.';
+  updateSend();
+ } catch {
+  failed('De opgehaalde bron is geen volledige bruikbare IOS running-config. Niets verstuurd.');
+ }
 });
 for(const allowed of SOURCE_ORIGINS)opener?.postMessage({type:'ready',version:1},allowed);
 if(!opener){clearTimeout(timeout);ended=true;status('Open deze pagina via Upload config bij een toestel in GNS3.');}
@@ -217,12 +259,12 @@ async function closeConsole(owned, message) {
 }
 
 function showPromptHint() {
- if (transcript.password) showConsoleMessage('Voer het wachtwoord voor de fysieke console in.');
+ if (transcript.password || enteringPassword) showConsoleMessage('Voer het wachtwoord voor de fysieke console in.');
  else if (transcript.more) showConsoleMessage('Klik op Volgende pagina of onderbreek de uitvoer.');
  else if (transcript.question) showConsoleMessage('Lees eerst de IOS-vraag in de console en geef bewust antwoord.');
- else if (transcript.prompt.endsWith('>')) showConsoleMessage('Typ enable om naar de gewone #‑prompt te gaan.');
- else if (transcript.prompt && !transcript.ready) showConsoleMessage('Typ end om naar de gewone #‑prompt te gaan.');
- else if (transcript.ready) showConsoleMessage('De fysieke console staat op de gewone #‑prompt.');
+ else if (transcript.prompt.endsWith('>')) showConsoleMessage('Typ enable voor de gewone #‑prompt. Tab vult commando’s aan.');
+ else if (transcript.prompt && !transcript.ready) showConsoleMessage('Typ end voor de gewone #‑prompt. Tab vult commando’s aan.');
+ else if (transcript.ready) showConsoleMessage('De fysieke console staat op de gewone #‑prompt. Tab vult commando’s aan.');
  else showConsoleMessage('Druk op Enter om de prompt op te vragen.');
 }
 
@@ -242,7 +284,7 @@ $('console-connect').onclick = async event => {
  try {
   const port = await navigator.serial.requestPort();
   if (leaving) return;
-  transcript = new ConsoleTranscript();
+  transcript = new ConsoleTranscript({showSensitive:true});
   consoleInput.value = '';
   owned = new SerialSession(port, {
    onData(value) {
@@ -278,15 +320,12 @@ $('console-connect').onclick = async event => {
  }
 };
 
-async function writeManual(value, input = '', password = false) {
+async function withManualConsole(action) {
  if (consoleState !== 'open' || busy || writingManually || leaving || !session) return;
  const owned = session;
  writingManually = true;
- transcript.beginInput(input, {password});
- consoleInput.value = '';
- renderConsole();
  try {
-  await owned.sendInput(value);
+  await action(owned);
  } catch (error) {
   if (consoleState === 'open') await closeConsole(owned, serialErrorMessage(error));
  } finally {
@@ -300,10 +339,34 @@ async function writeManual(value, input = '', password = false) {
  }
 }
 
+function writeManual(value, input = '', password = false) {
+ return withManualConsole(owned => {
+  transcript.beginInput(input, {password});
+  consoleInput.value = '';
+  renderConsole();
+  return owned.sendInput(value);
+ });
+}
+
+function completeManualInput() {
+ const input = consoleInput.value;
+ const prompt = transcript.prompt;
+ return withManualConsole(async owned => {
+  transcript.beginInput();
+  renderConsole();
+  const completed = reply => iosCompletion(reply, prompt, input);
+  // Tab completes; two redraws preserve the answer before Ctrl+E/Ctrl+U clear the device line.
+  const reply = await owned.exchangeInput(`${input}\t\x12\x12\x05\x15\x12`,
+   response => completed(response) !== null, {timeoutMs:4000});
+  if (leaving || session !== owned || consoleState !== 'open') return;
+  consoleInput.value = completed(reply);
+ });
+}
+
 function submitManual() {
  if (consoleInput.disabled) return;
  const input = consoleInput.value;
- void writeManual(input + '\r', input, consoleInput.type === 'password');
+ void writeManual(input + '\r', input, enteringPassword);
 }
 $('console-form').onsubmit = event => event.preventDefault();
 $('console-enter').onclick = event => {
@@ -320,6 +383,11 @@ consoleInput.onkeydown = event => {
  if (event.key === 'Enter') {
   event.preventDefault();
   submitManual();
+ } else if (event.key === 'Tab' && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey &&
+  !consoleInput.disabled && !enteringPassword && transcript.prompt && consoleInput.value.trim() &&
+  !/[?\x00-\x1f\x7f]/.test(consoleInput.value)) {
+  event.preventDefault();
+  void completeManualInput();
  } else if (event.ctrlKey && !event.altKey && !event.metaKey &&
   event.key.toLowerCase() === 'c' && consoleInput.selectionStart === consoleInput.selectionEnd) {
   event.preventDefault();
@@ -430,7 +498,7 @@ function leavePage() {
  operation?.abort();
  session?.stop();
  source = null;
- transcript = new ConsoleTranscript();
+ transcript = new ConsoleTranscript({showSensitive:true});
  accept = null;
  consoleInput.value = '';
  consoleOutput.textContent = '';
@@ -451,8 +519,10 @@ snmpFilter.onchange = () => {
  renderUploadConfig();
  updateSend();
 };
-snmpAuth.oninput = updateSend;
-snmpPriv.oninput = updateSend;
+snmpAuth.oninput = snmpPriv.oninput = () => {
+ renderSNMPPreview();
+ updateSend();
+};
 $('cancel').onclick = () => {
  leavePage();
  window.close();

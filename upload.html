@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="nl"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Upload config · Project 2026</title><link rel="stylesheet" href="style.css?v=20261123-1"><script type="module" src="upload-page.mjs?v=20261123-10"></script></head>
+<html lang="nl"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Upload config · Project 2026</title><link rel="stylesheet" href="style.css?v=20261123-1"><script type="module" src="upload-page.mjs?v=20261126-1"></script></head>
 <body><main class="upload-app" id="app" data-phase="waiting">
 <header class="app-header"><a class="app-brand" href="./upload.html"><span class="brand-icon" aria-hidden="true">⇧</span><span>PROJECT 2026<small>GNS3 · CONSOLE TRANSFER</small></span></a><span class="connection-pill"><span></span> Config blijft in je browser</span></header>
 <section class="page-heading"><p class="eyebrow">VAN VIRTUEEL NAAR FYSIEK</p><h1>Upload je configuratie.</h1><p class="intro">De actuele running-config uit GNS3, rechtstreeks naar je fysieke toestel via USB-console.</p></section>
@@ -25,10 +25,10 @@
 <label class="save-option"><input id="snmp-profile" type="checkbox" autocomplete="off" aria-controls="snmp-credentials" aria-describedby="snmp-note"> SNMP profiel</label>
 <p id="snmp-note" class="progress-note" aria-live="polite"></p>
 <div id="snmp-credentials" hidden>
-  <p class="progress-note"><label for="snmp-auth">SNMPv3-authenticatiesleutel</label><br><input id="snmp-auth" type="password" size="18" autocomplete="new-password" spellcheck="false" aria-describedby="snmp-note"></p>
-  <p class="progress-note"><label for="snmp-priv">SNMPv3-encryptiesleutel</label><br><input id="snmp-priv" type="password" size="18" autocomplete="new-password" spellcheck="false" aria-describedby="snmp-note"></p>
+  <p class="progress-note"><label for="snmp-auth">SNMPv3-authenticatiesleutel</label><br><input id="snmp-auth" type="text" size="18" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="snmp-note"></p>
+  <p class="progress-note"><label for="snmp-priv">SNMPv3-encryptiesleutel</label><br><input id="snmp-priv" type="text" size="18" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="snmp-note"></p>
 </div>
-<details class="config-details" id="snmp-details" hidden><summary>SNMP-regels bekijken <span>sleutels afgeschermd</span></summary><pre id="snmp-preview" tabindex="0" aria-label="SNMP-configuratieregels"></pre></details>
+<details class="config-details" id="snmp-details" hidden><summary>SNMP-regels bekijken</summary><pre id="snmp-preview" tabindex="0" aria-label="SNMP-configuratieregels"></pre></details>
 </div>
 <div class="progress-block"><div class="progress-title"><label for="fetch-progress">Running-config ophalen</label><span id="fetch-value">Wachten</span></div><progress id="fetch-progress" max="100" value="0" aria-label="Voortgang ophalen"></progress><p id="fetch-note" class="progress-note">Je virtuele toestel wordt uitgelezen.</p></div>
 <div class="config-facts" id="detail">Nog geen bron ontvangen</div>

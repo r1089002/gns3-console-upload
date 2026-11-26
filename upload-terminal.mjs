@@ -14,6 +14,22 @@ function withoutControlSequences(value) {
     .replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '');
 }
 
+/** Match the IOS redraws and confirm the device line is empty again. */
+export function iosCompletion(reply, prompt, input) {
+  const redraws = reply.split(/[\r\n]+/).map(withoutControlSequences).filter(line => line.startsWith(prompt));
+  if (redraws.length < 3 || redraws.at(-1).trimEnd() !== prompt) return null;
+
+  const typed = input.trimStart();
+  for (const line of redraws.slice(0, -2)) {
+    const candidate = line.slice(prompt.length).trimStart();
+    const suffix = candidate.slice(typed.length);
+    if (suffix && candidate.toLowerCase().startsWith(typed.toLowerCase()) && /^[\w./:-]*[ \t]*$/.test(suffix)) {
+      return candidate;
+    }
+  }
+  return input;
+}
+
 function uploadLine(line, hosts) {
   const echoHost = (prompt.exec(line) || safeEcho.exec(line))?.[1];
   if (hosts.has(echoHost) || /^(?:\^|\[OK\]|Building configuration\.\.\.)$/.test(line)) return line;
@@ -29,7 +45,8 @@ function uploadLine(line, hosts) {
 
 /** Renders output independently from the raw IOS replies used by the uploader. */
 export class ConsoleTranscript {
-  constructor() {
+  constructor({ showSensitive = false } = {}) {
+    this.showSensitive = showSensitive;
     this.history = [];
     this.partial = '';
     this.truncated = false;
@@ -108,6 +125,10 @@ export class ConsoleTranscript {
   }
 
   visibleLine(line, partial = false) {
+    if (this.showSensitive) {
+      const output = withoutControlSequences(this.partial);
+      return this.truncated ? output + ' [Console-uitvoer ingekort]' : output;
+    }
     if (this.truncated) return this.mode === 'manual' ? '[Console-uitvoer ingekort]' : '';
     if (line === this.sensitiveInput) return '';
     if (passwordPrompt.test(line)) return 'Password:';
@@ -125,7 +146,7 @@ export class ConsoleTranscript {
     const shown = this.visibleLine(line);
     if (shown) {
       this.history.push(shown);
-      if (this.history.length > 100) this.history.shift();
+      if (this.history.length > (this.showSensitive ? 2000 : 100)) this.history.shift();
     }
     if (this.mode === 'secret' && this.prompt === line && line) {
       this.mode = 'manual';

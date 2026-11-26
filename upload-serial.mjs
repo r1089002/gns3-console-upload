@@ -136,9 +136,14 @@ export class SerialSession {
   finally{this.busy=false;}
  }
  async exchange(command,{acceptAdditionalPrompt}={}){
+  const value=command==='\r'?command:command.replace(/\n/g,'\r')+'\r';
+  return this.exchangeInput(value,response => /(?:^|\n)[\w.-]+(?:\([^\n]*\))?[#>]\s*$/.test(response.replace(/\r/g,'\n')) ||
+   acceptAdditionalPrompt?.(response));
+ }
+ async exchangeInput(value,acceptResponse,{timeoutMs=this.operationMs}={}){
   this.guardOperation();
-  const deadline=now()+this.operationMs;
-  const bytes=new TextEncoder().encode(command==='\r'?command:command.replace(/\n/g,'\r')+'\r');
+  const deadline=now()+timeoutMs;
+  const bytes=new TextEncoder().encode(value);
   this.busy=true;
   this.response='';
   try{
@@ -147,7 +152,7 @@ export class SerialSession {
    while(true){
     this.guard();
     const response=this.response;
-    if(/(?:^|\n)[\w.-]+(?:\([^\n]*\))?[#>]\s*$/.test(response.replace(/\r/g,'\n'))||acceptAdditionalPrompt?.(response)){
+    if(acceptResponse(response)){
      if(stable===response)return response;
      stable=response;
     }else stable=null;
