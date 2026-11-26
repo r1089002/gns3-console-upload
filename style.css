@@ -203,6 +203,44 @@ body:has(.upload-app){background:#f5f7fa;color:#192c43}.upload-app{max-width:118
   margin-top: 12px;
 }
 
+.console-shortcuts button[data-console-text] {
+  font-family: Consolas, 'Courier New', monospace;
+}
+
+.console-personal-settings {
+  margin-top: 9px;
+}
+
+.console-personal-settings summary {
+  font-size: 12px;
+  color: #52657a;
+}
+
+.console-personal-settings form {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.console-personal-settings label {
+  flex: 1 1 150px;
+  min-width: 0;
+  color: #52657a;
+  font-size: 12px;
+}
+
+.console-personal-settings input {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px;
+  border: 1px solid #b2c7d2;
+  border-radius: 6px;
+  font: inherit;
+}
+
 .console-message {
   margin: 10px 0 0;
   color: #52657a;

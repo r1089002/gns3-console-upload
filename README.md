@@ -10,6 +10,8 @@ Klik in het donkere consolevlak en typ op de regel achter de IOS-prompt. De invo
 
 Blader met **↑** en **↓** door de commando’s die je tijdens deze verbinding hebt verstuurd. Met **↓** voorbij het nieuwste commando keer je terug naar je concept. Druk op **?** om direct de opties van IOS te zien. Typ bijvoorbeeld `show ` gevolgd door **?** voor de argumenten van `show` of typ `sh?` voor commando’s die met `sh` beginnen. Je invoer blijft staan, ook als de IOS-help meerdere pagina’s beslaat.
 
+Met de knoppen **write eras**, **delete flash:vlan.dat** en **Eigen sneltekst** vul je de promptregel. Je kunt de tekst controleren of aanpassen en daarna met **Enter** versturen. Stel de persoonlijke knop in via **Eigen sneltekst instellen**. De ingestelde tekst blijft in deze browser beschikbaar voor volgende uploadvensters.
+
 De Cisco-console toont de seriële uitvoer inclusief gevoelige regels en teruggestuurde commando’s. Wachtwoorden zijn zichtbaar in het invoerveld terwijl je typt. Na Enter toont het transcript wat IOS zelf terugstuurt.
 
 Een geldige GNS3-bronconfig, de gewone IOS-`#`-prompt en een klik op **Upload naar router** of **Upload naar switch** starten de overdracht. De uploader controleert de prompt opnieuw op dezelfde COM-verbinding en vergrendelt de invoer zolang hij zelf schrijft.

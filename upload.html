@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="nl"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Upload config · Project 2026</title><link rel="stylesheet" href="style.css?v=20261126-1"><script type="module" src="upload-page.mjs?v=20261126-4"></script></head>
+<html lang="nl"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Upload config · Project 2026</title><link rel="stylesheet" href="style.css?v=20261126-2"><script type="module" src="upload-page.mjs?v=20261126-5"></script></head>
 <body><main class="upload-app" id="app" data-phase="waiting">
 <header class="app-header"><a class="app-brand" href="./upload.html"><span class="brand-icon" aria-hidden="true">⇧</span><span>PROJECT 2026<small>GNS3 · CONSOLE TRANSFER</small></span></a><span class="connection-pill"><span></span> Config blijft in je browser</span></header>
 <section class="page-heading"><p class="eyebrow">VAN VIRTUEEL NAAR FYSIEK</p><h1>Upload je configuratie.</h1><p class="intro">De actuele running-config uit GNS3, rechtstreeks naar je fysieke toestel via USB-console.</p></section>
@@ -65,6 +65,21 @@
     <button id="console-interrupt" class="secondary" type="button" aria-label="Opdracht onderbreken (Ctrl+C)" disabled>Ctrl+C</button>
   </div>
   <p id="console-message" class="console-message" role="status" aria-live="polite">Sluit de USB-consolekabel aan, sluit PuTTY en klik op Verbinden.</p>
+  <div class="console-shortcuts" role="group" aria-label="Snelteksten voor de console">
+    <button class="secondary" type="button" data-console-text="write eras" disabled>write eras</button>
+    <button class="secondary" type="button" data-console-text="delete flash:vlan.dat" disabled>delete flash:vlan.dat</button>
+    <button id="console-personal-shortcut" class="secondary" type="button" disabled>Eigen sneltekst</button>
+  </div>
+  <details class="console-personal-settings">
+    <summary>Eigen sneltekst instellen</summary>
+    <form id="console-personal-form" autocomplete="off">
+      <label for="console-personal-text">Persoonlijke tekst
+        <input id="console-personal-text" type="text" autocomplete="off" autocapitalize="off" spellcheck="false">
+      </label>
+      <button type="submit" class="secondary">Bewaren</button>
+    </form>
+    <p id="console-personal-result" class="progress-note" role="status">Laat het veld leeg en kies Bewaren om je sneltekst te wissen.</p>
+  </details>
 </section>
 </div>
 <footer class="upload-footer"><span>Alleen de statische pagina wordt door GitHub gehost.</span><button id="cancel" class="text">Sluiten en gegevens wissen ↗</button></footer>

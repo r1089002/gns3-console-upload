@@ -24,6 +24,14 @@ const consoleInput = $('console-input');
 const consoleOutput = $('console-output');
 const inlineConsole = $('console-screen');
 const consoleScreen = inlineConsole || consoleOutput;
+const consoleShortcutButtons = document.querySelectorAll('button[data-console-text]');
+const personalShortcut = $('console-personal-shortcut');
+const personalShortcutForm = $('console-personal-form');
+const personalShortcutField = $('console-personal-text');
+const personalShortcutStatus = $('console-personal-result');
+const personalShortcutKey = 'gns3-console-upload.personal-shortcut';
+const controlCharacters = /[\x00-\x1f\x7f]/;
+let personalShortcutText = readPersonalShortcut();
 const consoleStates = {
  closed: 'Verbroken', choosing: 'Poort kiezen', opening: 'Verbinden',
  open: 'Verbonden', closing: 'Poort vrijgeven', blocked: 'Poortstatus onbekend'
@@ -75,6 +83,12 @@ function consoleTextWithInlinePrompt(prompt) {
   ? output.slice(0, Math.max(0, lastBreak))
   : output;
 }
+function renderConsoleShortcuts() {
+ for (const button of consoleShortcutButtons) {
+  button.disabled = consoleInput.disabled || enteringPassword || !transcript.prompt;
+ }
+ if (personalShortcut) personalShortcut.disabled = consoleInput.disabled || !personalShortcutText;
+}
 function renderConsole() {
  const open = consoleState === 'open';
  const manual = open && !busy && !writingManually;
@@ -103,6 +117,7 @@ function renderConsole() {
   consoleOutput.textContent = output;
  }
  if (follow) consoleScreen.scrollTop = consoleScreen.scrollHeight;
+ renderConsoleShortcuts();
  updateSend();
 }
 function selectedUpload(){
@@ -467,6 +482,60 @@ function recallCommand(direction) {
  consoleInput.setSelectionRange(cursor, cursor);
 }
 
+function readPersonalShortcut() {
+ try {
+  const value = localStorage.getItem(personalShortcutKey) ?? '';
+  return controlCharacters.test(value) ? '' : value;
+ } catch {
+  return '';
+ }
+}
+
+function fillConsoleShortcut(text) {
+ if (consoleInput.disabled || !text || leaving) return;
+ resetHistoryNavigation();
+ consoleInput.value = text;
+ consoleInput.focus();
+ consoleInput.setSelectionRange(text.length, text.length);
+}
+
+for (const button of consoleShortcutButtons) {
+ button.onclick = event => {
+  if (event.isTrusted && !button.disabled) fillConsoleShortcut(button.dataset.consoleText);
+ };
+}
+
+if (personalShortcutForm && personalShortcut) {
+ personalShortcut.onclick = event => {
+  if (event.isTrusted && !personalShortcut.disabled) fillConsoleShortcut(personalShortcutText);
+ };
+ personalShortcutForm.onsubmit = event => {
+  event.preventDefault();
+  if (!event.isTrusted || leaving) return;
+  const value = personalShortcutField.value;
+  if (controlCharacters.test(value)) {
+   personalShortcutStatus.textContent = 'Gebruik één tekstregel zonder besturingstekens.';
+   return;
+  }
+  try {
+   if (value) localStorage.setItem(personalShortcutKey, value);
+   else localStorage.removeItem(personalShortcutKey);
+   personalShortcutStatus.textContent = value ? 'Eigen sneltekst bewaard in deze browser.' : 'Eigen sneltekst gewist.';
+  } catch {
+   personalShortcutStatus.textContent = value ? 'De sneltekst staat klaar voor dit venster.' : 'Eigen sneltekst gewist in dit venster.';
+  }
+  personalShortcutText = value;
+  personalShortcutField.value = '';
+  renderConsoleShortcuts();
+ };
+ if (personalShortcutText) personalShortcutStatus.textContent = 'Eigen sneltekst ingesteld. Bewaar een leeg veld om die te wissen.';
+ window.addEventListener('storage', event => {
+  if (event.key !== personalShortcutKey && event.key !== null) return;
+  personalShortcutText = readPersonalShortcut();
+  renderConsoleShortcuts();
+ });
+}
+
 function submitManual() {
  if (consoleInput.disabled) return;
  const input = consoleInput.value;
@@ -623,6 +692,7 @@ function leavePage() {
  transcript = new ConsoleTranscript({showSensitive:true});
  accept = null;
  consoleInput.value = '';
+ if (personalShortcutField) personalShortcutField.value = '';
  clearCommandHistory();
  consoleOutput.textContent = '';
  $('config').textContent = '';
