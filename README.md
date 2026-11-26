@@ -10,7 +10,7 @@ Klik in het donkere consolevlak en typ op de regel achter de IOS-prompt. De invo
 
 Blader met **↑** en **↓** door de commando’s die je tijdens deze verbinding hebt verstuurd. Met **↓** voorbij het nieuwste commando keer je terug naar je concept. Druk op **?** om direct de opties van IOS te zien. Typ bijvoorbeeld `show ` gevolgd door **?** voor de argumenten van `show` of typ `sh?` voor commando’s die met `sh` beginnen. Je invoer blijft staan, ook als de IOS-help meerdere pagina’s beslaat.
 
-Met **write erase**, **delete flash:vlan.dat** en je persoonlijke snelknop vul je de promptregel. Je kunt de tekst controleren of aanpassen en daarna met **Enter** versturen. Voer je tekst in via **Eigen sneltekst instellen**. De knop toont de bewaarde tekst ook in volgende uploadvensters in deze browser.
+Met **write erase**, **delete flash:vlan.dat**, **reload** en je persoonlijke snelknop vul je de promptregel. Je kunt de tekst controleren of aanpassen en daarna met **Enter** versturen. Voer je tekst in via **Eigen sneltekst instellen**. De knop toont de bewaarde tekst ook in volgende uploadvensters in deze browser.
 
 De Cisco-console toont de seriële uitvoer inclusief gevoelige regels en teruggestuurde commando’s. Wachtwoorden zijn zichtbaar in het invoerveld terwijl je typt. Na Enter toont het transcript wat IOS zelf terugstuurt.
 
