@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="nl"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Upload config · Project 2026</title><link rel="stylesheet" href="style.css?v=20261123-1"><script type="module" src="upload-page.mjs?v=20261126-2"></script></head>
+<html lang="nl"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Upload config · Project 2026</title><link rel="stylesheet" href="style.css?v=20261126-1"><script type="module" src="upload-page.mjs?v=20261126-3"></script></head>
 <body><main class="upload-app" id="app" data-phase="waiting">
 <header class="app-header"><a class="app-brand" href="./upload.html"><span class="brand-icon" aria-hidden="true">⇧</span><span>PROJECT 2026<small>GNS3 · CONSOLE TRANSFER</small></span></a><span class="connection-pill"><span></span> Config blijft in je browser</span></header>
 <section class="page-heading"><p class="eyebrow">VAN VIRTUEEL NAAR FYSIEK</p><h1>Upload je configuratie.</h1><p class="intro">De actuele running-config uit GNS3, rechtstreeks naar je fysieke toestel via USB-console.</p></section>
@@ -50,15 +50,17 @@
   </div>
   <div class="console-terminal">
     <div class="console-terminal-header"><span>USB-console</span><span id="console-mode">Inactief</span></div>
-    <pre id="console-output" role="region" aria-label="Console-uitvoer" tabindex="0"></pre>
-    <form id="console-form" class="console-command" aria-label="Console-invoer versturen">
-      <span id="console-prompt" class="console-prompt">—</span>
-      <label class="visually-hidden" for="console-input">Console-invoer</label>
-      <input id="console-input" type="text" aria-describedby="console-prompt console-mode" placeholder="Commando of reactie" autocomplete="off" autocapitalize="off" spellcheck="false" disabled>
-      <button id="console-enter" type="submit" disabled>Enter</button>
-    </form>
+    <div id="console-screen" class="console-screen">
+      <pre id="console-output" role="region" aria-label="Console-uitvoer" tabindex="0"></pre>
+      <form id="console-form" class="console-command" aria-label="Console-invoer versturen" hidden>
+        <span id="console-prompt" class="console-prompt">—</span>
+        <label class="visually-hidden" for="console-input">Console-invoer</label>
+        <input id="console-input" type="text" aria-describedby="console-prompt console-mode" placeholder="Commando of reactie" autocomplete="off" autocapitalize="off" spellcheck="false" disabled>
+      </form>
+    </div>
   </div>
   <div class="console-shortcuts">
+    <button id="console-enter" class="secondary" type="button" disabled>Enter</button>
     <button id="console-more" class="secondary" type="button" hidden>Volgende pagina (spatie)</button>
     <button id="console-interrupt" class="secondary" type="button" aria-label="Opdracht onderbreken (Ctrl+C)" disabled>Ctrl+C</button>
   </div>

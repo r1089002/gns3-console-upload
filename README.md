@@ -6,7 +6,7 @@ Statische HTTPS-pagina voor de menuactie **Upload config** bij Cisco-toestellen 
 
 Gebruik Chrome of Edge op de laptop met de USB-consolekabel. Sluit PuTTY en kies bij **Fysieke console** de juiste snelheid (standaard 9600 baud). Klik op **Verbinden** en selecteer de COM-poort. De verbinding opent zonder bytes te versturen. Druk zelf op **Enter** om de prompt op te vragen. Gebruik `show version` om het toestel te controleren, `enable` om van `>` naar `#` te gaan en `end` om configuratiemodus te verlaten. De terminal biedt ook spatie bij `--More--` en Ctrl+C.
 
-Typ bij een IOS-prompt het begin van een commando en druk op **Tab**. IOS vult een unieke afkorting aan in het invoerveld. Gebruik **Enter** om het commando uit te voeren. Dit gebruikt de standaard CLI-lijnbewerking van IOS.
+Klik in het donkere consolevlak en typ op de regel achter de IOS-prompt. De invoer scrolt mee met de uitvoer. Druk op **Tab** om een unieke afkorting door IOS te laten aanvullen. Gebruik **Enter** om het commando uit te voeren.
 
 De Cisco-console toont de seriële uitvoer inclusief gevoelige regels en teruggestuurde commando’s. Wachtwoorden zijn zichtbaar in het invoerveld terwijl je typt. Na Enter toont het transcript wat IOS zelf terugstuurt.
 

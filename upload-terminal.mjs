@@ -30,6 +30,18 @@ export function iosCompletion(reply, prompt, input) {
   return input;
 }
 
+/** Keep IOS messages sent between the command editor's redraws. */
+export function iosCompletionOutput(reply, prompt, input, completed) {
+  const echoes = new Set(['', input.trim().toLowerCase(), completed.trim().toLowerCase()]);
+  const lines = reply.split(/[\r\n]+/).map(withoutControlSequences);
+  const finalPrompt = lines.findLastIndex(line => line.trimEnd() === prompt);
+  return lines.filter((line, index) => {
+    if (index === finalPrompt) return true;
+    const text = line.startsWith(prompt) ? line.slice(prompt.length) : line;
+    return !echoes.has(text.trim().toLowerCase());
+  }).join('\n');
+}
+
 function uploadLine(line, hosts) {
   const echoHost = (prompt.exec(line) || safeEcho.exec(line))?.[1];
   if (hosts.has(echoHost) || /^(?:\^|\[OK\]|Building configuration\.\.\.)$/.test(line)) return line;

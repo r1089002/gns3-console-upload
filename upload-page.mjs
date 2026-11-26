@@ -1,7 +1,7 @@
 import {SERIAL_WRITES_ENABLED,SOURCE_ORIGINS} from './upload-settings.mjs?v=20261028-3';
 import {describeSNMP,iosReplyPrompt,prepareRunning,receiver,sendIOS,validSNMPCredential} from './upload-core.mjs?v=20261126-1';
 import {SerialSession,serialErrorMessage} from './upload-serial.mjs?v=20261126-1';
-import {ConsoleTranscript,iosCompletion} from './upload-terminal.mjs?v=20261126-1';
+import {ConsoleTranscript,iosCompletion,iosCompletionOutput} from './upload-terminal.mjs?v=20261126-2';
 import {prepareCatalyst2960} from './ios-catalyst2960.mjs?v=20261123-3';
 import {prepareC8200L} from './ios-c8200l.mjs?v=20261126-1';
 const $=id=>document.getElementById(id);let job=null,origin=null,accept=null,source=null,session=null,cleanupPending=false,ended=false,busy=false,operation=null,confirmed=0,receivedAt=null,ageTimer=null,ageMinute=-1;
@@ -22,6 +22,8 @@ c8200lFilter.checked=false;
 snmpFilter.checked=false;
 const consoleInput = $('console-input');
 const consoleOutput = $('console-output');
+const inlineConsole = $('console-screen');
+const consoleScreen = inlineConsole || consoleOutput;
 const consoleStates = {
  closed: 'Verbroken', choosing: 'Poort kiezen', opening: 'Verbinden',
  open: 'Verbonden', closing: 'Poort vrijgeven', blocked: 'Poortstatus onbekend'
@@ -30,6 +32,7 @@ let consoleState = 'closed';
 let transcript = new ConsoleTranscript({showSensitive:true});
 let enteringPassword = false;
 let writingManually = false;
+let completionChunks = null;
 let leaving = false;
 const serialAvailable=()=>!!navigator.serial&&isSecureContext;
 function status(value){$('status').textContent=value;}
@@ -60,9 +63,18 @@ function updateSend(){
 function showConsoleMessage(message) {
  $('console-message').textContent = message;
 }
+function consoleTextWithInlinePrompt(prompt) {
+ const output = transcript.text;
+ const lastBreak = output.lastIndexOf('\n');
+ return prompt && output.slice(lastBreak + 1).trim() === prompt
+  ? output.slice(0, Math.max(0, lastBreak))
+  : output;
+}
 function renderConsole() {
  const open = consoleState === 'open';
  const manual = open && !busy && !writingManually;
+ const showInput = open && !busy && !transcript.more;
+ const follow = consoleScreen.scrollHeight - consoleScreen.scrollTop - consoleScreen.clientHeight < 30;
  $('app').dataset.portState = consoleState;
  $('console-state').textContent = consoleStates[consoleState];
  $('console-mode').textContent = busy && open ? 'Upload bestuurt de console' : open ? 'Handmatige invoer' : '';
@@ -71,19 +83,21 @@ function renderConsole() {
   writingManually || (consoleState !== 'closed' && !open);
  $('baud').disabled = consoleState !== 'closed';
  enteringPassword = transcript.password || (enteringPassword && consoleInput.value !== '');
- $('console-prompt').textContent = enteringPassword ? 'Password:' : transcript.prompt || '—';
+ const prompt = enteringPassword ? 'Password:' : transcript.prompt;
+ $('console-form').hidden = !showInput;
+ $('console-prompt').hidden = !prompt;
+ $('console-prompt').textContent = prompt || '—';
  consoleInput.placeholder = enteringPassword ? 'Wachtwoord' : 'Commando of reactie';
  consoleInput.disabled = !manual || transcript.more;
  $('console-enter').disabled = consoleInput.disabled;
  $('console-interrupt').disabled = !manual;
  $('console-more').hidden = !open || busy || !transcript.more;
  $('console-more').disabled = !manual;
- const output = transcript.text;
+ const output = consoleTextWithInlinePrompt(inlineConsole && showInput ? prompt : '');
  if (consoleOutput.textContent !== output) {
-  const follow = consoleOutput.scrollHeight - consoleOutput.scrollTop - consoleOutput.clientHeight < 30;
   consoleOutput.textContent = output;
-  if (follow) consoleOutput.scrollTop = consoleOutput.scrollHeight;
  }
+ if (follow) consoleScreen.scrollTop = consoleScreen.scrollHeight;
  updateSend();
 }
 function selectedUpload(){
@@ -293,6 +307,10 @@ $('console-connect').onclick = async event => {
   owned = new SerialSession(port, {
    onData(value) {
     if (session !== owned || leaving || !['opening', 'open'].includes(consoleState)) return;
+    if (completionChunks) {
+     completionChunks.push(value);
+     return;
+    }
     transcript.feed(value);
     if (consoleState === 'open' && !busy) showPromptHint();
     renderConsole();
@@ -356,14 +374,26 @@ function completeManualInput() {
  const input = consoleInput.value;
  const prompt = transcript.prompt;
  return withManualConsole(async owned => {
-  transcript.beginInput();
+  const terminal = transcript;
+  const chunks = [];
+  completionChunks = chunks;
   renderConsole();
   const completed = reply => iosCompletion(reply, prompt, input);
-  // Tab completes; two redraws preserve the answer before Ctrl+E/Ctrl+U clear the device line.
-  const reply = await owned.exchangeInput(`${input}\t\x12\x12\x05\x15\x12`,
-   response => completed(response) !== null, {timeoutMs:4000});
-  if (leaving || session !== owned || consoleState !== 'open') return;
-  consoleInput.value = completed(reply);
+  try {
+   // Tab completes; two redraws preserve the answer before Ctrl+E/Ctrl+U clear the device line.
+   const reply = await owned.exchangeInput(`${input}\t\x12\x12\x05\x15\x12`,
+    response => completed(response) !== null, {timeoutMs:4000});
+   if (leaving || session !== owned || consoleState !== 'open') return;
+   const value = completed(reply);
+   const output = iosCompletionOutput(reply, prompt, input, value);
+   if (output.trimEnd() !== prompt) terminal.feed('\n' + output);
+   consoleInput.value = terminal.password ? '' : value;
+  } catch (error) {
+   if (!leaving && transcript === terminal) terminal.feed(chunks.join(''));
+   throw error;
+  } finally {
+   completionChunks = null;
+  }
  });
 }
 
@@ -373,6 +403,10 @@ function submitManual() {
  void writeManual(input + '\r', input, enteringPassword);
 }
 $('console-form').onsubmit = event => event.preventDefault();
+consoleScreen.addEventListener('click', event => {
+ if (consoleInput.disabled || event.target === consoleInput || window.getSelection()?.isCollapsed === false) return;
+ consoleInput.focus();
+});
 $('console-enter').onclick = event => {
  if (event.isTrusted) submitManual();
 };

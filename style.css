@@ -154,6 +154,51 @@ body:has(.upload-app){background:#f5f7fa;color:#192c43}.upload-app{max-width:118
   color: #edf6f8;
 }
 
+.console-screen {
+  height: clamp(220px, 40vh, 390px);
+  padding: 12px 13px;
+  overflow: auto;
+  scrollbar-gutter: stable;
+  font: 12px/1.6 Consolas, 'Courier New', monospace;
+}
+
+.console-screen:focus-within {
+  box-shadow: inset 0 0 0 2px #6aa395;
+}
+
+.upload-app .console-screen #console-output {
+  height: auto;
+  padding: 0;
+  overflow: visible;
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.console-screen .console-command {
+  display: flex;
+  align-items: baseline;
+  gap: .5ch;
+  padding: 0;
+  border: 0;
+}
+
+.console-screen .console-prompt {
+  max-width: 60%;
+  font: inherit;
+}
+
+.console-screen .console-command input {
+  flex: 1;
+  min-height: 1.6em;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font: inherit;
+  outline: none;
+}
+
 .console-shortcuts {
   margin-top: 12px;
 }
