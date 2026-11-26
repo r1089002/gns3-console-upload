@@ -8,6 +8,8 @@ Gebruik Chrome of Edge op de laptop met de USB-consolekabel. Sluit PuTTY en kies
 
 Klik in het donkere consolevlak en typ op de regel achter de IOS-prompt. De invoer scrolt mee met de uitvoer. Druk op **Tab** om een unieke afkorting door IOS te laten aanvullen. Gebruik **Enter** om het commando uit te voeren.
 
+Blader met **↑** en **↓** door de commando’s die je tijdens deze verbinding hebt verstuurd. Met **↓** voorbij het nieuwste commando keer je terug naar je concept. Druk op **?** om direct de opties van IOS te zien. Typ bijvoorbeeld `show ` gevolgd door **?** voor de argumenten van `show` of typ `sh?` voor commando’s die met `sh` beginnen. Je invoer blijft staan, ook als de IOS-help meerdere pagina’s beslaat.
+
 De Cisco-console toont de seriële uitvoer inclusief gevoelige regels en teruggestuurde commando’s. Wachtwoorden zijn zichtbaar in het invoerveld terwijl je typt. Na Enter toont het transcript wat IOS zelf terugstuurt.
 
 Een geldige GNS3-bronconfig, de gewone IOS-`#`-prompt en een klik op **Upload naar router** of **Upload naar switch** starten de overdracht. De uploader controleert de prompt opnieuw op dezelfde COM-verbinding en vergrendelt de invoer zolang hij zelf schrijft.

@@ -1,7 +1,7 @@
 import {SERIAL_WRITES_ENABLED,SOURCE_ORIGINS} from './upload-settings.mjs?v=20261028-3';
 import {describeSNMP,iosReplyPrompt,prepareRunning,receiver,sendIOS,validSNMPCredential} from './upload-core.mjs?v=20261126-1';
 import {SerialSession,serialErrorMessage} from './upload-serial.mjs?v=20261126-1';
-import {ConsoleTranscript,iosCompletion,iosCompletionOutput} from './upload-terminal.mjs?v=20261126-2';
+import {ConsoleTranscript,iosCompletion,iosCompletionOutput,iosHelpPage} from './upload-terminal.mjs?v=20261126-3';
 import {prepareCatalyst2960} from './ios-catalyst2960.mjs?v=20261123-3';
 import {prepareC8200L} from './ios-c8200l.mjs?v=20261126-1';
 const $=id=>document.getElementById(id);let job=null,origin=null,accept=null,source=null,session=null,cleanupPending=false,ended=false,busy=false,operation=null,confirmed=0,receivedAt=null,ageTimer=null,ageMinute=-1;
@@ -32,7 +32,11 @@ let consoleState = 'closed';
 let transcript = new ConsoleTranscript({showSensitive:true});
 let enteringPassword = false;
 let writingManually = false;
-let completionChunks = null;
+let editorChunks = null;
+let helpLinePending = false;
+const commandHistory = [];
+let historyIndex = 0;
+let historyDraft = '';
 let leaving = false;
 const serialAvailable=()=>!!navigator.serial&&isSecureContext;
 function status(value){$('status').textContent=value;}
@@ -51,7 +55,8 @@ function updateSend(){
  const authReady=validSNMPCredential(snmpAuth.value);
  const privReady=validSNMPCredential(snmpPriv.value);
  const snmpReady=snmpDescription&&authReady&&privReady;
- $('send').disabled=!SERIAL_WRITES_ENABLED||!serialAvailable()||!source||!uploadPlan||busy||cleanupPending||writingManually||consoleState!=='open'||!transcript.ready||enteringPassword||(snmpFilter.checked&&!snmpReady);
+ $('send').disabled=!SERIAL_WRITES_ENABLED||!serialAvailable()||!source||!uploadPlan||busy||cleanupPending||
+  writingManually||helpLinePending||consoleState!=='open'||!transcript.ready||enteringPassword||(snmpFilter.checked&&!snmpReady);
  saveFilter.disabled=busy||cleanupPending;
  routingFilter.disabled=busy||cleanupPending;
  catalystFilter.disabled=c8200lFilter.disabled=busy||cleanupPending;
@@ -88,7 +93,7 @@ function renderConsole() {
  $('console-prompt').hidden = !prompt;
  $('console-prompt').textContent = prompt || '—';
  consoleInput.placeholder = enteringPassword ? 'Wachtwoord' : 'Commando of reactie';
- consoleInput.disabled = !manual || transcript.more;
+ consoleInput.disabled = !manual || transcript.more || helpLinePending;
  $('console-enter').disabled = consoleInput.disabled;
  $('console-interrupt').disabled = !manual;
  $('console-more').hidden = !open || busy || !transcript.more;
@@ -270,6 +275,7 @@ async function closeConsole(owned, message) {
  consoleState = 'closing';
  cleanupPending = true;
  consoleInput.value = '';
+ clearCommandHistory();
  renderConsole();
  const result = await owned.close();
  finishConsoleClose(owned, result, message);
@@ -277,12 +283,14 @@ async function closeConsole(owned, message) {
 }
 
 function showPromptHint() {
- if (transcript.password || enteringPassword) showConsoleMessage('Voer het wachtwoord voor de fysieke console in.');
+ const shortcuts = '↑/↓ Geschiedenis · Tab Aanvullen · ? IOS-help';
+ if (helpLinePending) showConsoleMessage('Druk op de knop Ctrl+C om de onafgewerkte IOS-invoer te wissen.');
+ else if (transcript.password || enteringPassword) showConsoleMessage('Voer het wachtwoord voor de fysieke console in.');
  else if (transcript.more) showConsoleMessage('Klik op Volgende pagina of onderbreek de uitvoer.');
  else if (transcript.question) showConsoleMessage('Lees eerst de IOS-vraag in de console en geef bewust antwoord.');
- else if (transcript.prompt.endsWith('>')) showConsoleMessage('Typ enable voor de gewone #‑prompt. Tab vult commando’s aan.');
- else if (transcript.prompt && !transcript.ready) showConsoleMessage('Typ end voor de gewone #‑prompt. Tab vult commando’s aan.');
- else if (transcript.ready) showConsoleMessage('De fysieke console staat op de gewone #‑prompt. Tab vult commando’s aan.');
+ else if (transcript.prompt.endsWith('>')) showConsoleMessage('Typ enable voor de gewone #‑prompt. ' + shortcuts);
+ else if (transcript.prompt && !transcript.ready) showConsoleMessage('Typ end voor de gewone #‑prompt. ' + shortcuts);
+ else if (transcript.ready) showConsoleMessage(shortcuts);
  else showConsoleMessage('Druk op Enter om de prompt op te vragen.');
 }
 
@@ -307,11 +315,14 @@ $('console-connect').onclick = async event => {
   owned = new SerialSession(port, {
    onData(value) {
     if (session !== owned || leaving || !['opening', 'open'].includes(consoleState)) return;
-    if (completionChunks) {
-     completionChunks.push(value);
+    if (editorChunks) {
+     editorChunks.push(value);
      return;
     }
     transcript.feed(value);
+    if (helpLinePending && (transcript.prompt || transcript.password || /^(?:Username|Login):$/i.test(transcript.currentLine()))) {
+     helpLinePending = false;
+    }
     if (consoleState === 'open' && !busy) showPromptHint();
     renderConsole();
    },
@@ -365,41 +376,104 @@ function writeManual(value, input = '', password = false) {
  return withManualConsole(owned => {
   transcript.beginInput(input, {password});
   consoleInput.value = '';
+  resetHistoryNavigation();
   renderConsole();
   return owned.sendInput(value);
  });
 }
 
-function completeManualInput() {
- const input = consoleInput.value;
- const prompt = transcript.prompt;
+function withConsoleEditor(action) {
  return withManualConsole(async owned => {
   const terminal = transcript;
   const chunks = [];
-  completionChunks = chunks;
+  editorChunks = chunks;
   renderConsole();
-  const completed = reply => iosCompletion(reply, prompt, input);
   try {
-   // Tab completes; two redraws preserve the answer before Ctrl+E/Ctrl+U clear the device line.
-   const reply = await owned.exchangeInput(`${input}\t\x12\x12\x05\x15\x12`,
-    response => completed(response) !== null, {timeoutMs:4000});
-   if (leaving || session !== owned || consoleState !== 'open') return;
-   const value = completed(reply);
-   const output = iosCompletionOutput(reply, prompt, input, value);
-   if (output.trimEnd() !== prompt) terminal.feed('\n' + output);
-   consoleInput.value = terminal.password ? '' : value;
+   await action(owned, terminal);
   } catch (error) {
    if (!leaving && transcript === terminal) terminal.feed(chunks.join(''));
    throw error;
   } finally {
-   completionChunks = null;
+   editorChunks = null;
   }
  });
+}
+
+function completeManualInput() {
+ const input = consoleInput.value;
+ return withConsoleEditor(async (owned, terminal) => {
+  const prompt = terminal.prompt;
+  const completed = reply => iosCompletion(reply, prompt, input);
+  // Tab completes; two redraws preserve the answer before Ctrl+E/Ctrl+U clear the device line.
+  const reply = await owned.exchangeInput(`${input}\t\x12\x12\x05\x15\x12`,
+   response => completed(response) !== null, {timeoutMs:4000});
+  if (leaving || session !== owned || consoleState !== 'open') return;
+  const value = completed(reply);
+  const output = iosCompletionOutput(reply, prompt, input, value);
+  if (output.trimEnd() !== prompt) terminal.feed('\n' + output);
+  consoleInput.value = terminal.password ? '' : value;
+ });
+}
+
+function showContextHelp(prefix) {
+ const {selectionStart, selectionEnd, selectionDirection} = consoleInput;
+ return withConsoleEditor(async (owned, terminal) => {
+  const prompt = terminal.prompt;
+  const deadline = performance.now() + 20000;
+  const output = [];
+  const request = prefix + '?';
+  const parse = reply => iosHelpPage(reply, prompt, prefix);
+  const getPage = async keys => parse(await owned.exchangeInput(keys,
+   reply => parse(reply) !== null, {timeoutMs:Math.max(1, deadline - performance.now())}));
+  helpLinePending = true;
+  showConsoleMessage('IOS-help ophalen…');
+  let page = await getPage(request);
+  output.push(page.output);
+  while (page.more) {
+   page = await getPage(' ');
+   output.push(page.output);
+  }
+  // The browser retains the draft. Clear the IOS edit buffer before another key can be sent.
+  const renderReply = reply => iosCompletionOutput(reply, prompt, prefix, '');
+  const cleared = await owned.exchangeInput('\x05\x15\x12',
+   reply => iosReplyPrompt(renderReply(reply)) === prompt, {timeoutMs:4000});
+  helpLinePending = false;
+  if (leaving || session !== owned || consoleState !== 'open') return;
+  const echo = terminal.currentLine() === prompt ? request : '\n' + prompt + request;
+  terminal.feed([echo, ...output, renderReply(cleared)].filter(Boolean).join('\n'));
+  if (terminal.password) consoleInput.value = '';
+  else consoleInput.setSelectionRange(selectionStart, selectionEnd, selectionDirection);
+ });
+}
+
+function resetHistoryNavigation() {
+ historyIndex = commandHistory.length;
+ historyDraft = '';
+}
+
+function clearCommandHistory() {
+ commandHistory.length = 0;
+ resetHistoryNavigation();
+}
+
+function recallCommand(direction) {
+ const end = commandHistory.length;
+ const next = Math.max(0, Math.min(end, historyIndex + direction));
+ if (next === historyIndex) return;
+ if (historyIndex === end) historyDraft = consoleInput.value;
+ historyIndex = next;
+ consoleInput.value = commandHistory[next] ?? historyDraft;
+ const cursor = consoleInput.value.length;
+ consoleInput.setSelectionRange(cursor, cursor);
 }
 
 function submitManual() {
  if (consoleInput.disabled) return;
  const input = consoleInput.value;
+ if (transcript.prompt && !enteringPassword && input.trim() && input !== commandHistory.at(-1)) {
+  commandHistory.push(input);
+  if (commandHistory.length > 50) commandHistory.shift();
+ }
  void writeManual(input + '\r', input, enteringPassword);
 }
 $('console-form').onsubmit = event => event.preventDefault();
@@ -418,11 +492,20 @@ $('console-interrupt').onclick = event => {
 };
 consoleInput.onkeydown = event => {
  if (!event.isTrusted || event.isComposing) return;
+ const cli = !consoleInput.disabled && !enteringPassword && transcript.prompt &&
+  !event.ctrlKey && !event.altKey && !event.metaKey;
  if (event.key === 'Enter') {
   event.preventDefault();
   submitManual();
- } else if (event.key === 'Tab' && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey &&
-  !consoleInput.disabled && !enteringPassword && transcript.prompt && consoleInput.value.trim() &&
+ } else if (cli && !event.shiftKey && ['ArrowUp', 'ArrowDown'].includes(event.key)) {
+  event.preventDefault();
+  recallCommand(event.key === 'ArrowUp' ? -1 : 1);
+ } else if (cli && event.key === '?') {
+  const prefix = consoleInput.value.slice(0, consoleInput.selectionStart);
+  if (/[?\x00-\x1f\x7f]/.test(prefix)) return;
+  event.preventDefault();
+  void showContextHelp(prefix);
+ } else if (cli && event.key === 'Tab' && !event.shiftKey && consoleInput.value.trim() &&
   !/[?\x00-\x1f\x7f]/.test(consoleInput.value)) {
   event.preventDefault();
   void completeManualInput();
@@ -460,6 +543,7 @@ $('send').onclick = async event => {
  let message;
  let configurationStarted = false;
  consoleInput.value = '';
+ resetHistoryNavigation();
  transcript.beginUpload(source.hostname);
  $('upload-progress').value = 0;
  $('upload-value').textContent = '0%';
@@ -539,6 +623,7 @@ function leavePage() {
  transcript = new ConsoleTranscript({showSensitive:true});
  accept = null;
  consoleInput.value = '';
+ clearCommandHistory();
  consoleOutput.textContent = '';
  $('config').textContent = '';
  clearSNMPCredentials();

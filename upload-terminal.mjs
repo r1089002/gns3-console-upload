@@ -42,6 +42,27 @@ export function iosCompletionOutput(reply, prompt, input, completed) {
   }).join('\n');
 }
 
+/** Read one page of context help and identify IOS's pager or command redraw. */
+export function iosHelpPage(reply, prompt, prefix) {
+  const lines = reply.split(/[\r\n]+/).map(withoutControlSequences);
+  while (lines.at(-1)?.trim() === '') lines.pop();
+  const last = lines.at(-1)?.trimEnd() ?? '';
+  const pager = /--More--$/i;
+  const more = pager.test(last);
+  if (more) {
+    lines[lines.length - 1] = last.replace(pager, '').trimEnd();
+  } else {
+    if (lines.length < 2 || !last.startsWith(prompt) || last.slice(prompt.length).trim() !== prefix.trim()) return null;
+    lines.pop();
+  }
+
+  const first = lines.findIndex(line => line.trim());
+  const echo = lines[first]?.trim() ?? '';
+  const typed = echo.startsWith(prompt) ? echo.slice(prompt.length).trimStart() : echo;
+  if (typed === `${prefix.trimStart()}?`) lines.splice(first, 1);
+  return { more, output: lines.filter(line => line.trim()).join('\n') };
+}
+
 function uploadLine(line, hosts) {
   const echoHost = (prompt.exec(line) || safeEcho.exec(line))?.[1];
   if (hosts.has(echoHost) || /^(?:\^|\[OK\]|Building configuration\.\.\.)$/.test(line)) return line;
