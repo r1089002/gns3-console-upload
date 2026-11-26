@@ -203,8 +203,15 @@ body:has(.upload-app){background:#f5f7fa;color:#192c43}.upload-app{max-width:118
   margin-top: 12px;
 }
 
-.console-shortcuts button[data-console-text] {
+.console-shortcuts button[data-console-text],
+.console-shortcuts #console-personal-shortcut {
   font-family: Consolas, 'Courier New', monospace;
+}
+
+.console-shortcuts #console-personal-shortcut {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .console-personal-settings {

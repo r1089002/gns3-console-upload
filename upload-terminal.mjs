@@ -44,7 +44,8 @@ export function iosCompletionOutput(reply, prompt, input, completed) {
 
 /** Read one page of context help and identify IOS's pager or command redraw. */
 export function iosHelpPage(reply, prompt, prefix) {
-  const lines = reply.split(/[\r\n]+/).map(withoutControlSequences);
+  const pagerErase = /^[\x08\x7f](?:[ \x08\x7f]*[\x08\x7f])?/;
+  const lines = reply.split(/[\r\n]+/).map(line => withoutControlSequences(line.replace(pagerErase, '')));
   while (lines.at(-1)?.trim() === '') lines.pop();
   const last = lines.at(-1)?.trimEnd() ?? '';
   const pager = /--More--$/i;

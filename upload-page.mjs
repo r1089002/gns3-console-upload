@@ -1,7 +1,7 @@
 import {SERIAL_WRITES_ENABLED,SOURCE_ORIGINS} from './upload-settings.mjs?v=20261028-3';
 import {describeSNMP,iosReplyPrompt,prepareRunning,receiver,sendIOS,validSNMPCredential} from './upload-core.mjs?v=20261126-1';
 import {SerialSession,serialErrorMessage} from './upload-serial.mjs?v=20261126-1';
-import {ConsoleTranscript,iosCompletion,iosCompletionOutput,iosHelpPage} from './upload-terminal.mjs?v=20261126-3';
+import {ConsoleTranscript,iosCompletion,iosCompletionOutput,iosHelpPage} from './upload-terminal.mjs?v=20261126-4';
 import {prepareCatalyst2960} from './ios-catalyst2960.mjs?v=20261123-3';
 import {prepareC8200L} from './ios-c8200l.mjs?v=20261126-1';
 const $=id=>document.getElementById(id);let job=null,origin=null,accept=null,source=null,session=null,cleanupPending=false,ended=false,busy=false,operation=null,confirmed=0,receivedAt=null,ageTimer=null,ageMinute=-1;
@@ -87,7 +87,11 @@ function renderConsoleShortcuts() {
  for (const button of consoleShortcutButtons) {
   button.disabled = consoleInput.disabled || enteringPassword || !transcript.prompt;
  }
- if (personalShortcut) personalShortcut.disabled = consoleInput.disabled || !personalShortcutText;
+ if (personalShortcut) {
+  personalShortcut.disabled = consoleInput.disabled || !personalShortcutText;
+  const label = personalShortcutText || 'Eigen sneltekst';
+  if (personalShortcut.textContent !== label) personalShortcut.textContent = label;
+ }
 }
 function renderConsole() {
  const open = consoleState === 'open';
