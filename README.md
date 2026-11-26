@@ -38,9 +38,9 @@ De uploader controleert eerst de SNMPv3-gebruiker op het fysieke toestel. Hij be
 
 ## Palo Alto via USB-console
 
-De GNS3-knop bij FW-NY en FW-BRU opent `palo-upload.html`. Verbind de USB-console, meld je aan, controleer het fysieke toestel en zet vooraf beoordeelde PAN-OS-`set`-opdrachten klaar vanuit een lokaal tekstbestand of het invoervak. De pagina verifieert het gekozen toestel opnieuw en controleert de candidate voordat ze de commando’s verstuurt.
+De GNS3-knop bij FW-NY en FW-BRU opent `palo-upload.html` met de beschikbare `.set` uit Configcache. Je kunt ook een beoordeeld lokaal tekstbestand of het invoervak gebruiken. Verbind de USB-console en meld je aan tot je de `>`-prompt ziet. Bij toestelcontrole en upload schakelt de pagina de CLI-paginering uit en stelt ze de terminalhoogte en -breedte in op 500. De pagina controleert het fysieke toestel en de candidate voordat ze de configuratiecommando’s verstuurt.
 
-De overdracht stopt bij een fout. Beoordeel de wijzigingen in de PAN-OS-candidate en voer de commit zelf uit. Het bestaande XML-bestand van de virtuele firewall is beschikbaar via Configcache. Voor USB gebruik je een afzonderlijke setlijst die voor het fysieke model is voorbereid.
+De overdracht stopt bij een fout en de status vermeldt de betrokken stap bij ontbrekende seriële uitvoer. Beoordeel de wijzigingen in de PAN-OS-candidate en voer de commit zelf uit. Het XML-bestand van de virtuele firewall blijft beschikbaar via Configcache.
 
 ## Voortgang
 

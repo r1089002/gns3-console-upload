@@ -1,7 +1,7 @@
 import { SERIAL_WRITES_ENABLED, SOURCE_ORIGINS } from './upload-settings.mjs?v=20261028-3';
 import { SerialSession, serialErrorMessage } from './upload-serial.mjs?v=20261122-1';
 import { ConsoleTranscript } from './upload-terminal.mjs?v=20261122-1';
-import { PAN_INPUT_MAX_BYTES, identifyPAN, panPrompt, panosTrain, preparePAN, stagePAN } from './pan-upload-core.mjs?v=20261123-1';
+import { PAN_INPUT_MAX_BYTES, PAN_PAGER_PROMPT, identifyPAN, panPrompt, panosTrain, preparePAN, preparePANConsole, stagePAN } from './pan-upload-core.mjs?v=20261126-1';
 
 const $ = id => document.getElementById(id);
 const consoleInput = $('console-input');
@@ -20,7 +20,6 @@ const states = {
 };
 const loginPrompt = /^(?:[\w.-]+\s+)?(?:login|username):$/i;
 const passwordPrompt = /^(?:enter\s+)?(?:(?:a\s+)?(?:old|new|current|confirm|re-enter)\s+)?password\s*:$/i;
-const morePrompt = /(?:--More--|\(END\))\s*$/i;
 const secretWords = /\b(?:password|secret|phash|community|key-string|pre-shared-key|authentication-key|privacy-key|private-key)\b/i;
 
 class PANTranscript extends ConsoleTranscript {
@@ -36,12 +35,14 @@ class PANTranscript extends ConsoleTranscript {
     this.prompt = line === this.sensitiveInput ? '' : this.promptForLine(line)?.text || '';
     this.login = loginPrompt.test(line);
     this.password = passwordPrompt.test(line);
-    this.more = morePrompt.test(line);
+    this.more = PAN_PAGER_PROMPT.test(line);
   }
 
   beginInput(value, options) {
+    const keepUploadMask = this.mode === 'upload' && value === '';
     super.beginInput(value, options);
-    if (secretWords.test(value)) this.mode = 'secret';
+    if (keepUploadMask) this.mode = 'upload';
+    else if (secretWords.test(value)) this.mode = 'secret';
     this.login = false;
   }
 
@@ -59,7 +60,7 @@ class PANTranscript extends ConsoleTranscript {
     if (this.mode === 'upload') return prompt || (/^(?:Entering configuration mode|\[edit\])$/.test(line) ? line : '');
     if (passwordPrompt.test(line)) return 'Password:';
     if (this.mode === 'secret') return prompt || '';
-    if (partial && !prompt && !loginPrompt.test(line) && !morePrompt.test(line)) return '';
+    if (partial && !prompt && !loginPrompt.test(line) && !PAN_PAGER_PROMPT.test(line)) return '';
     if (secretWords.test(line)) return '[Gevoelige console-inhoud afgeschermd]';
     return line;
   }
@@ -125,7 +126,7 @@ function render() {
   consoleInput.disabled = !manual || transcript.more;
   $('console-enter').disabled = consoleInput.disabled;
   $('console-interrupt').disabled = !manual;
-  $('console-more').hidden = !manual || !transcript.more;
+  $('console-more').hidden = !manual || !transcript.more || transcript.mode === 'upload';
   $('checkDevice').hidden = cachedSource !== null;
   $('checkDevice').disabled = !canCheck;
   $('physicalDevice').textContent = checkedDevice
@@ -162,7 +163,9 @@ function consoleMessage(message) {
 function showPromptHint() {
   if (transcript.password) consoleMessage('Voer het wachtwoord van de fysieke firewall in.');
   else if (transcript.login) consoleMessage('Meld je aan op de fysieke firewall.');
-  else if (transcript.more) consoleMessage('Klik op Volgende pagina of onderbreek de uitvoer.');
+  else if (transcript.more) consoleMessage(transcript.mode === 'upload'
+    ? 'Gebruik Ctrl+C om terug te keren naar de prompt.'
+    : 'Klik op Volgende pagina of onderbreek de uitvoer.');
   else if (panPrompt(transcript.prompt)?.mode === 'configuration') {
     consoleMessage('Je staat in de configuratiemodus. Beoordeel de candidate vóór je zelf commit. Gebruik exit om terug te keren voor een nieuwe toestelcontrole.');
   } else if (transcript.prompt && cachedSource && prepared) {
@@ -357,6 +360,7 @@ $('prepareConfig').onclick = event => {
 
 async function runConsole(label, action) {
   const owned = session;
+  const prompt = transcript.prompt;
   const controller = new AbortController();
   operation = { controller, label };
   transcript.beginUpload();
@@ -365,7 +369,7 @@ async function runConsole(label, action) {
   render();
   try {
     const exchange = (command, options) => owned.exchange(command, options);
-    await action(exchange, controller.signal);
+    await action(exchange, controller.signal, prompt);
   } finally {
     transcript.endUpload();
     operation = null;
@@ -379,17 +383,17 @@ async function runConsole(label, action) {
 function operationError(error) {
   const message = typeof error?.code === 'string' && error.code.startsWith('PAN_')
     ? error.message : 'De consolebewerking is onderbroken.';
-  if (!['PAN_IDENTITY', 'PAN_EXCHANGE'].includes(error?.code)) return message;
-  return `${message} Bij afgebroken uitvoer kun je zo nodig opnieuw verbinden en op de operationele prompt (>) ` +
-    '“set cli terminal height 500” en “set cli terminal width 500” een voor een invoeren. Controleer daarna het toestel opnieuw.';
+  if (error?.code === 'PAN_PAGER') return `${message} Gebruik Ctrl+C om terug te keren naar de prompt.`;
+  return message;
 }
 
 $('checkDevice').onclick = event => {
   if (!event.isTrusted || $('checkDevice').disabled) return;
   checkedDevice = null;
   if (targetKnown) status('Fysieke firewall uitlezen…', 'checking', 'Toestel controleren');
-  void runConsole('Toestel controleren', async (exchange, signal) => {
+  void runConsole('Toestel controleren', async (exchange, signal, prompt) => {
     try {
+      await preparePANConsole(exchange, prompt, {signal});
       const identity = await identifyPAN(exchange, { signal });
       if (leaving || signal.aborted || consoleState !== 'open') return;
       checkedDevice = identity;
@@ -409,9 +413,10 @@ $('upload').onclick = event => {
   const commands = prepared;
   let confirmed = 0;
   progress(0, commands.length);
-  status('Fysieke identiteit en candidate controleren…', 'uploading', 'Upload actief');
-  void runConsole('Upload actief', async (exchange, signal) => {
+  status('Console voorbereiden en fysieke firewall controleren…', 'uploading', 'Upload actief');
+  void runConsole('Upload actief', async (exchange, signal, prompt) => {
     try {
+      await preparePANConsole(exchange, prompt, {signal});
       const expectedDevice = checkedBeforeUpload ?? await identifyPAN(exchange, {signal});
       if (leaving || signal.aborted || consoleState !== 'open') return;
       checkedDevice = expectedDevice;

@@ -1,4 +1,5 @@
 export const PAN_INPUT_MAX_BYTES = 2 * 1024 * 1024;
+export const PAN_PAGER_PROMPT = /^\u0007*(?:--More--|\(END\)|lines \d+-\d+)[ \t]*$/i;
 
 // PAN-OS 11.2 configuration roots for a firewall, including multi-vsys output.
 const configRoots = new Set([
@@ -99,25 +100,31 @@ export function panPrompt(output) {
 
 function acceptPrompt(output) {
   const tail = responseLines(output).at(-1) ?? '';
-  return Boolean(parsePrompt(tail)) || /^(?:[\w.-]+\s+login|login|username|(?:enter\s+)?(?:old\s+|new\s+|confirm\s+|retype\s+)?password):$/i.test(tail);
+  return Boolean(parsePrompt(tail)) || PAN_PAGER_PROMPT.test(tail) ||
+    /^(?:[\w.-]+\s+login|login|username|(?:enter\s+)?(?:old\s+|new\s+|confirm\s+|retype\s+)?password):$/i.test(tail);
 }
 
 function checkAbort(signal) {
   if (signal?.aborted) throw panError('PAN_ABORTED', 'PAN-OS-overdracht afgebroken.');
 }
 
-async function readCommand(exchange, command, signal) {
+async function readCommand(exchange, command, signal, step) {
   checkAbort(signal);
   let output;
   try {
     output = await exchange(command, {acceptAdditionalPrompt:acceptPrompt, signal});
-  } catch {
+  } catch (error) {
     checkAbort(signal);
-    throw panError('PAN_EXCHANGE', 'De seriële console reageerde niet zoals verwacht. De overdracht is gestopt.');
+    const problem = error?.code === 'SERIAL_TIMEOUT' ? 'Er kwam geen tijdig antwoord' : 'De seriële communicatie werd onderbroken';
+    throw panError('PAN_EXCHANGE', `${problem} tijdens ${step}.`);
   }
   checkAbort(signal);
   const lines = responseLines(output);
-  return {prompt:parsePrompt(lines.pop()), lines};
+  const tail = lines.pop() ?? '';
+  if (PAN_PAGER_PROMPT.test(tail)) {
+    throw panError('PAN_PAGER', `De firewall wacht tijdens ${step} op de volgende pagina.`);
+  }
+  return {prompt:parsePrompt(tail), lines};
 }
 
 function commandBody(response, command, before) {
@@ -126,6 +133,19 @@ function commandBody(response, command, before) {
     return response.lines.slice(1);
   }
   return null;
+}
+
+export async function preparePANConsole(exchange, promptText, {signal} = {}) {
+  const prompt = panPrompt(promptText);
+  if (prompt?.mode !== 'operational') {
+    throw panError('PAN_PROMPT', 'Open de operationele PAN-OS-prompt (>) en probeer opnieuw.');
+  }
+  for (const command of ['set cli pager off', 'set cli terminal height 500', 'set cli terminal width 500']) {
+    const response = await readCommand(exchange, command, signal, 'de terminalvoorbereiding');
+    if (response.prompt?.text !== prompt.text || commandBody(response, command, prompt)?.length !== 0) {
+      throw panError('PAN_TERMINAL', `De bevestiging van “${command}” ontbreekt. Controleer de operationele prompt (>).`);
+    }
+  }
 }
 
 const identityFields = {model:'model', version:'sw-version', hostname:'hostname', serial:'serial'};
@@ -143,7 +163,7 @@ function validIdentity(device) {
 
 async function inspectPAN(exchange, signal) {
   const command = 'show system info';
-  const response = await readCommand(exchange, command, signal);
+  const response = await readCommand(exchange, command, signal, 'de toestelcontrole');
   if (response.prompt?.mode !== 'operational') {
     throw panError('PAN_PROMPT', 'Open de operationele PAN-OS-prompt (>) en controleer de firewall opnieuw.');
   }
@@ -191,7 +211,7 @@ export async function stagePAN(commands, exchange, {
   }
 
   const diffCommand = 'show config diff';
-  const diff = await readCommand(exchange, diffCommand, signal);
+  const diff = await readCommand(exchange, diffCommand, signal, 'de kandidaatcontrole');
   const candidate = commandBody(diff, diffCommand, prompt);
   if (diff.prompt?.text !== prompt.text || !candidate ||
       (candidate.length !== 0 && candidate.join('\n') !== 'No configuration changes.')) {
@@ -199,7 +219,7 @@ export async function stagePAN(commands, exchange, {
   }
 
   const configurationPrompt = `${prompt.text.slice(0, -1)}#`;
-  const configure = await readCommand(exchange, 'configure', signal);
+  const configure = await readCommand(exchange, 'configure', signal, 'het openen van de configuratiemodus');
   const entered = commandBody(configure, 'configure', prompt)?.join('\n');
   if (configure.prompt?.text !== configurationPrompt ||
       (entered !== 'Entering configuration mode\n[edit]' && entered !== '[edit]')) {
@@ -207,7 +227,7 @@ export async function stagePAN(commands, exchange, {
   }
 
   for (const [index, command] of queue.entries()) {
-    const response = await readCommand(exchange, command, signal);
+    const response = await readCommand(exchange, command, signal, `opdracht ${index + 1} van ${queue.length}`);
     if (response.prompt?.text !== configurationPrompt || commandBody(response, command, configure.prompt)?.join('\n') !== '[edit]') {
       throw panError('PAN_COMMAND', `PAN-OS-opdracht ${index + 1} van ${queue.length} werd niet bevestigd. Controleer de kandidaat in de console.`);
     }
