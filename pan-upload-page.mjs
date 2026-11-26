@@ -1,7 +1,7 @@
 import { SERIAL_WRITES_ENABLED, SOURCE_ORIGINS } from './upload-settings.mjs?v=20261028-3';
 import { SerialSession, serialErrorMessage } from './upload-serial.mjs?v=20261122-1';
 import { ConsoleTranscript } from './upload-terminal.mjs?v=20261122-1';
-import { PAN_INPUT_MAX_BYTES, PAN_PAGER_PROMPT, identifyPAN, panPrompt, panosTrain, preparePAN, preparePANConsole, stagePAN } from './pan-upload-core.mjs?v=20261126-1';
+import { PAN_INPUT_MAX_BYTES, PAN_PAGER_PROMPT, identifyPAN, panPrompt, panosTrain, preparePAN, preparePANConsole, stagePAN } from './pan-upload-core.mjs?v=20261126-2';
 
 const $ = id => document.getElementById(id);
 const consoleInput = $('console-input');

@@ -142,8 +142,9 @@ export async function preparePANConsole(exchange, promptText, {signal} = {}) {
   }
   for (const command of ['set cli pager off', 'set cli terminal height 500', 'set cli terminal width 500']) {
     const response = await readCommand(exchange, command, signal, 'de terminalvoorbereiding');
-    if (response.prompt?.text !== prompt.text || commandBody(response, command, prompt)?.length !== 0) {
-      throw panError('PAN_TERMINAL', `De bevestiging van “${command}” ontbreekt. Controleer de operationele prompt (>).`);
+    // A terminal preference can return directly to the prompt without a command echo.
+    if (response.prompt?.text !== prompt.text) {
+      throw panError('PAN_TERMINAL', `De oorspronkelijke operationele prompt ontbreekt na “${command}”. Controleer de console.`);
     }
   }
 }
