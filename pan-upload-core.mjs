@@ -128,9 +128,12 @@ async function readCommand(exchange, command, signal, step) {
 }
 
 function commandBody(response, command, before) {
-  const echo = response.lines[0];
-  if (echo === command || (before && echo?.startsWith(before.text) && echo.slice(before.text.length).replace(/^[ \t]+/, '') === command)) {
-    return response.lines.slice(1);
+  const prompt = before?.text;
+  for (const [index, line] of response.lines.entries()) {
+    const echo = prompt && line.startsWith(prompt) ? line.slice(prompt.length).replace(/^[ \t]+/, '') : line;
+    if (echo === command) return response.lines.slice(index + 1);
+    // The physical CLI can redraw partial input before echoing the full command.
+    if (!echo || !command.startsWith(echo)) break;
   }
   return null;
 }
