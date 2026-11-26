@@ -12,7 +12,9 @@ De Cisco-console toont de seriële uitvoer inclusief gevoelige regels en terugge
 
 Een geldige GNS3-bronconfig, de gewone IOS-`#`-prompt en een klik op **Upload naar router** of **Upload naar switch** starten de overdracht. De uploader controleert de prompt opnieuw op dezelfde COM-verbinding en vergrendelt de invoer zolang hij zelf schrijft.
 
-Bij R-CHI1, R-NY en R-Provider staat het profiel **C8200L-1N-4T met IOS XE 17.12** standaard aan. Het vertaalt de Rack 4-poortnamen in interfaceblokken, subinterfaces, routes en OSPF-regels. Voor de overdracht controleert de pagina het model, de IOS XE-versie en de vier ingebouwde poorten. Bij switches kun je het Catalyst 2960-profiel zelf aanvinken.
+Bij R-CHI1, R-NY en R-Provider staat het profiel **C8200L-1N-4T met IOS XE 17.12** standaard aan. Het vertaalt de Rack 4-poortnamen in interfaceblokken, subinterfaces, routes en OSPF-regels. Voor de overdracht controleert de pagina het model, de IOS XE-versie en de vier ingebouwde poorten.
+
+Bij S-CHI, S-NY, SW-BRU-ACC1 en SW-BRU-ACC2 staat het profiel **Catalyst 2960** bij elke nieuwe uploadpagina standaard aan. De pagina controleert het fysieke model en de IOS-versie vóór de overdracht. Je kunt het profiel per sessie uitvinken.
 
 Bij een geslaagde overdracht of een IOS-weigering blijft de verbinding open voor handmatige controle. Wie opnieuw wil uploaden nadat `configure terminal` is aangeboden, opent een nieuwe bron via GNS3. **Verbreken** sluit de verbinding. **Upload stoppen**, een I/O-time-out of verlies van de poort sluit de verbinding en bewaakt de vrijgave.
 
@@ -20,7 +22,7 @@ Bij een geslaagde overdracht of een IOS-weigering blijft de verbinding open voor
 
 Met het opslagfilter aan vervalt ook de zelfstandige globale regel `service compress-config` uit het voorbeeld en de overdracht. Met het opslagfilter uit verstuurt de uploader die regel op haar oorspronkelijke positie in de running-config.
 
-**L2-switch: no ip routing weglaten** verschijnt als de bron die zelfstandige IOS-opdracht bevat. Het vinkje staat bij elke nieuwe uploadpagina uit. Aanvinken verwijdert die opdracht uit het uploadvoorbeeld, de totaaltelling en de fysieke overdracht. Het opslagfilter werkt onafhankelijk.
+**L2-switch: no ip routing weglaten** verschijnt als de bron die zelfstandige IOS-opdracht bevat. Bij de vier accessswitches hierboven staat het dan standaard aan. Het filter laat die opdracht weg uit het uploadvoorbeeld, de totaaltelling en de fysieke overdracht. Je kunt het vinkje per sessie aanpassen. Het opslagfilter werkt onafhankelijk.
 
 De uploader laat de twee zelfstandige exportmarkeringen `boot-start-marker` en `boot-end-marker` weg. Het voorbeeld en de opdrachtentelling volgen de verzendlijst. Echte `boot`-opdrachten behouden hun plaats. Bij een time-out meldt de pagina welke genummerde opdracht niet is bevestigd. Alleen commandonamen uit de lijst met veilige labels worden getoond.
 

@@ -15,6 +15,7 @@ const snmpAuth=$('snmp-auth');
 const snmpPriv=$('snmp-priv');
 let snmpDescription=null;
 const routerName = /^R-/i;
+const accessSwitchNames = new Set(['S-CHI', 'S-NY', 'SW-BRU-ACC1', 'SW-BRU-ACC2']);
 routingFilter.checked=false;
 catalystFilter.checked=false;
 c8200lFilter.checked=false;
@@ -207,6 +208,9 @@ window.addEventListener('message',e=>{
   if (!data) return;
   source = data;
   c8200lFilter.checked = isRouterSource();
+  const accessSwitch = !c8200lFilter.checked && accessSwitchNames.has(data.name.trim().toUpperCase());
+  catalystFilter.checked = accessSwitch;
+  routingFilter.checked = accessSwitch && data.noIpRoutingCount > 0;
   ended = true;
   accept = null;
   clearTimeout(timeout);
