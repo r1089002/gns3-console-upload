@@ -16,7 +16,7 @@ De Cisco-console toont de seriële uitvoer inclusief gevoelige regels en terugge
 
 Een geldige GNS3-bronconfig, de gewone IOS-`#`-prompt en een klik op **Upload naar router** of **Upload naar switch** starten de overdracht. De uploader controleert de prompt opnieuw op dezelfde COM-verbinding en vergrendelt de invoer zolang hij zelf schrijft.
 
-Bij R-CHI1, R-NY en R-Provider staat het profiel **C8200L-1N-4T met IOS XE 17.12** standaard aan. Het vertaalt de Rack 4-poortnamen in interfaceblokken, subinterfaces, routes en OSPF-regels. Voor de overdracht controleert de pagina het model, de IOS XE-versie en de vier ingebouwde poorten.
+Bij R-CHI1, R-NY en R-Provider staat het profiel **C8200L-1N-4T met IOS XE 17.12** standaard aan. Het vertaalt de Rack 4-poortnamen in interfaceblokken, subinterfaces, routes, OSPF-regels en interfacealiassen. Voor de overdracht controleert de pagina het model, de IOS XE-versie en de vier ingebouwde poorten.
 
 Bij S-CHI, S-NY, SW-BRU-ACC1 en SW-BRU-ACC2 staat het profiel **Catalyst 2960** bij elke nieuwe uploadpagina standaard aan. De pagina controleert het fysieke model en de IOS-versie vóór de overdracht. Je kunt het profiel per sessie uitvinken.
 

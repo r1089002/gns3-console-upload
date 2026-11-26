@@ -3,7 +3,7 @@ import {describeSNMP,iosReplyPrompt,prepareRunning,receiver,sendIOS,validSNMPCre
 import {SerialSession,serialErrorMessage} from './upload-serial.mjs?v=20261126-1';
 import {ConsoleTranscript,iosCompletion,iosCompletionOutput,iosHelpPage} from './upload-terminal.mjs?v=20261126-4';
 import {prepareCatalyst2960} from './ios-catalyst2960.mjs?v=20261123-3';
-import {prepareC8200L} from './ios-c8200l.mjs?v=20261126-1';
+import {prepareC8200L} from './ios-c8200l.mjs?v=20261126-2';
 const $=id=>document.getElementById(id);let job=null,origin=null,accept=null,source=null,session=null,cleanupPending=false,ended=false,busy=false,operation=null,confirmed=0,receivedAt=null,ageTimer=null,ageMinute=-1;
 const saveFilter=$('hide-save-commands');
 const routingFilter=$('filter-no-ip-routing');

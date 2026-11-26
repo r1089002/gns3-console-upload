@@ -2,7 +2,7 @@ const GIGABIT_PORT = String.raw`((?:GigabitEthernet|Gi)[ \t]*)(\d+\/\d+(?:\/\d+)
 const INTERFACE = new RegExp(String.raw`^(interface[ \t]+)${GIGABIT_PORT}([ \t]*)$`, 'i');
 const IPV4 = String.raw`(?:\d{1,3}\.){3}\d{1,3}`;
 const GLOBAL_REFERENCE = new RegExp(
-  String.raw`^((?:ip[ \t]+route[ \t]+${IPV4}[ \t]+${IPV4}|ip[ \t]+tftp[ \t]+source-interface|logging[ \t]+source-interface|ntp[ \t]+source)[ \t]+)${GIGABIT_PORT}([ \t].*)?$`,
+  String.raw`^((?:ip[ \t]+route[ \t]+${IPV4}[ \t]+${IPV4}|ip[ \t]+tftp[ \t]+source-interface|logging[ \t]+source-interface|ntp[ \t]+source|alias[ \t]+configure[ \t]+\S+[ \t]+interface)[ \t]+)${GIGABIT_PORT}([ \t].*)?$`,
   'i',
 );
 const ROUTING_REFERENCE = new RegExp(String.raw`^([ \t]+(?:no[ \t]+)?passive-interface[ \t]+)${GIGABIT_PORT}([ \t]*)$`, 'i');
