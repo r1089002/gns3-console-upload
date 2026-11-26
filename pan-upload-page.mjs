@@ -1,13 +1,15 @@
 import { SERIAL_WRITES_ENABLED, SOURCE_ORIGINS } from './upload-settings.mjs?v=20261028-3';
 import { SerialSession, serialErrorMessage } from './upload-serial.mjs?v=20261122-1';
 import { ConsoleTranscript } from './upload-terminal.mjs?v=20261122-1';
-import { PAN_INPUT_MAX_BYTES, PAN_PAGER_PROMPT, identifyPAN, panPrompt, panosTrain, preparePAN, preparePANConsole, stagePAN } from './pan-upload-core.mjs?v=20261126-2';
+import { PAN_INPUT_MAX_BYTES, PAN_PAGER_PROMPT, identifyPAN, panPrompt, panosTrain, preparePAN, preparePANConsole, stagePAN } from './pan-upload-core.mjs?v=20261126-3';
+import { PA440_101_TRAIN, preparePa440101 } from './pan-pa440-101.mjs?v=20261126-1';
 
 const $ = id => document.getElementById(id);
 const consoleInput = $('console-input');
 const consoleOutput = $('console-output');
 const configInput = $('configInput');
 const configFile = $('configFile');
+const panos101Profile = $('panos101-profile');
 const params = new URLSearchParams(location.search);
 const target = params.get('device');
 const cacheRequested = params.get('source') === 'cache';
@@ -107,6 +109,20 @@ function showPrepared(commands) {
   progress(0, commands.length);
 }
 
+function showCachedProfile() {
+  const translated = panos101Profile?.checked ? cachedSource.translated : null;
+  const commands = translated ?? cachedSource.commands;
+  cachedSource.train = translated ? PA440_101_TRAIN : cachedSource.sourceTrain;
+  configInput.value = commands.join('\n');
+  $('cacheSource').textContent = `${cachedSource.label} · Doel ${CACHE_TARGET_MODEL} met PAN-OS ${cachedSource.train}`;
+  $('cacheSource').hidden = false;
+  showPrepared(commands);
+  status('Bekijk de klaargezette regels. Meld je aan op de fysieke firewall en klik op Naar candidate uploaden.',
+    'ready', 'Regels klaargezet');
+  if (consoleState === 'open' && !operation) showPromptHint();
+  render();
+}
+
 function render() {
   const open = consoleState === 'open';
   const manual = open && !operation && !writingManually && !leaving;
@@ -135,6 +151,11 @@ function render() {
   configInput.disabled = operation !== null;
   $('chooseFile').disabled = operation !== null;
   $('prepareConfig').disabled = operation !== null || readingFile;
+  if (panos101Profile) {
+    $('panos101-control').hidden = !cachedSource?.profileEligible;
+    $('panos101-note').hidden = Boolean(cachedSource?.translated);
+    panos101Profile.disabled = operation !== null || !cachedSource?.translated;
+  }
   $('upload').disabled = !targetKnown || !canCheck || !prepared || readingFile ||
     (!cachedSource && (!checkedDevice || !matchingPrompt));
   $('stop').hidden = operation === null;
@@ -305,9 +326,18 @@ configInput.oninput = () => {
   ++sourceRevision;
   configFile.value = '';
   readingFile = false;
+  if (cachedSource?.profileEligible) {
+    const train = cachedSource.train;
+    cachedSource = {train};
+    $('cacheSource').textContent = `Handmatig bewerkte regels · Doel ${CACHE_TARGET_MODEL} met PAN-OS ${train}`;
+  }
   clearReview();
   render();
 };
+
+panos101Profile?.addEventListener('change', event => {
+  if (event.isTrusted && !panos101Profile.disabled && !leaving) showCachedProfile();
+});
 
 $('chooseFile').onclick = event => {
   if (event.isTrusted && !operation) configFile.click();
@@ -473,7 +503,7 @@ function requestCacheSource() {
     cancelCacheRequest = null;
   }
 
-  function receive(event) {
+  async function receive(event) {
     const data = event.data;
     if (leaving || event.source !== opener || !SOURCE_ORIGINS.includes(event.origin) ||
         data?.version !== 1 || data.device !== target || data.job !== job ||
@@ -502,19 +532,17 @@ function requestCacheSource() {
         throw Error('Ongeldige bronmetadata');
       }
       const commands = preparePAN(data.config);
-      cachedSource = {train};
-      configInput.value = commands.join('\n');
-      $('cacheSource').textContent = `Configcache van ${dateFormat.format(captured)} · PAN-OS ${data.panosVersion}` +
-        (data.skipped ? ` · ${data.skipped} onderdelen overgeslagen` : '') + ` · ${CACHE_TARGET_MODEL}-profiel`;
-      $('cacheSource').hidden = false;
-      showPrepared(commands);
-      status('Bekijk de klaargezette regels. Meld je aan op de fysieke firewall en klik op Naar candidate uploaden.',
-        'ready', 'Regels klaargezet');
+      const profileEligible = Boolean(panos101Profile) && target === 'FW-NY' && train === '11.2';
+      const translated = profileEligible ? await preparePa440101(commands) : null;
+      if (leaving || sourceRevision) return;
+      const label = `Configcache van ${dateFormat.format(captured)} · PAN-OS ${data.panosVersion}` +
+        (data.skipped ? ` · ${data.skipped} onderdelen overgeslagen` : '');
+      cachedSource = {sourceTrain:train, commands, translated, profileEligible, label};
+      if (panos101Profile) panos101Profile.checked = Boolean(translated);
+      showCachedProfile();
     } catch {
-      status('GNS3 gaf geen geldige PAN-OS-verzendlijst door.', 'error', 'Bron geweigerd');
+      if (!leaving && !sourceRevision) status('GNS3 gaf geen geldige PAN-OS-verzendlijst door.', 'error', 'Bron geweigerd');
     }
-    if (consoleState === 'open' && !operation) showPromptHint();
-    render();
   }
 
   cancelCacheRequest = cancel;

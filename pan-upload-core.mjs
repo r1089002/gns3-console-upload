@@ -205,7 +205,7 @@ export async function stagePAN(commands, exchange, {
   }
 
   if (requiredTrain !== undefined && (!requiredTrain || panosTrain(device.version) !== requiredTrain)) {
-    throw panError('PAN_VERSION', `De bron gebruikt PAN-OS ${requiredTrain}. De fysieke firewall draait PAN-OS ${device.version}. Uploaden vereist dezelfde PAN-OS-reeks.`);
+    throw panError('PAN_VERSION', `Dit profiel vereist PAN-OS ${requiredTrain}. De fysieke firewall draait PAN-OS ${device.version}.`);
   }
   if (requiredModel !== undefined && device.model.toUpperCase() !== requiredModel) {
     throw panError('PAN_MODEL', `Het Configcache-profiel vereist een ${requiredModel}. De aangesloten firewall is een ${device.model}.`);

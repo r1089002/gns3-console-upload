@@ -40,6 +40,8 @@ De uploader controleert eerst de SNMPv3-gebruiker op het fysieke toestel. Hij be
 
 De GNS3-knop bij FW-NY en FW-BRU opent `palo-upload.html` met de beschikbare `.set` uit Configcache. Je kunt ook een beoordeeld lokaal tekstbestand of het invoervak gebruiken. Verbind de USB-console en meld je aan tot je de `>`-prompt ziet. Bij toestelcontrole en upload schakelt de pagina de CLI-paginering uit en stelt ze de terminalhoogte en -breedte in op 500. De pagina controleert het fysieke toestel en de candidate voordat ze de configuratiecommando’s verstuurt.
 
+Voor de gecontroleerde FW-NY-cache kiest de pagina automatisch **PA-440 met PAN-OS 10.1**. Zet het vinkje uit om de bronregels te bekijken. Als de vertaalde regels na een cachewijziging afwijken van de gecontroleerde set, vraagt het 10.1-profiel om een nieuwe beoordeling. De upload controleert of het toestel bij het geselecteerde profiel past.
+
 De overdracht stopt bij een fout en de status vermeldt de betrokken stap bij ontbrekende seriële uitvoer. Beoordeel de wijzigingen in de PAN-OS-candidate en voer de commit zelf uit. Het XML-bestand van de virtuele firewall blijft beschikbaar via Configcache.
 
 ## Voortgang

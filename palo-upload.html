@@ -7,7 +7,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Upload Palo Alto config · Project 2026</title>
   <link rel="stylesheet" href="style.css?v=20261122-1">
-  <script type="module" src="pan-upload-page.mjs?v=20261126-2"></script>
+  <script type="module" src="pan-upload-page.mjs?v=20261126-3"></script>
 </head>
 <body>
 <main class="upload-app" id="app" data-phase="waiting">
@@ -36,6 +36,10 @@
       <button id="checkDevice" class="secondary" type="button" disabled>Toestel controleren</button>
 
       <div class="config-details">
+        <div class="save-control" id="panos101-control" hidden>
+          <label class="save-option"><input id="panos101-profile" type="checkbox" autocomplete="off" aria-controls="configInput configPreview"> PA-440 met PAN-OS 10.1</label>
+          <p id="panos101-note" class="progress-note" hidden>Het 10.1-profiel vraagt een nieuwe controle van deze cachekopie.</p>
+        </div>
         <p><label for="configInput">Voorbereide PAN-OS <code>set</code>-opdrachten</label></p>
         <textarea id="configInput" rows="6" cols="27" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Plak je set-opdrachten hier"></textarea>
         <input id="configFile" type="file" accept=".txt,.set" aria-label="Lokaal PAN-OS-bestand" hidden>
