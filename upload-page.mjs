@@ -4,11 +4,13 @@ import {SerialSession,serialErrorMessage} from './upload-serial.mjs?v=20261126-1
 import {ConsoleTranscript,iosCompletion,iosCompletionOutput,iosHelpPage} from './upload-terminal.mjs?v=20261126-4';
 import {prepareCatalyst2960} from './ios-catalyst2960.mjs?v=20261123-3';
 import {prepareC8200L} from './ios-c8200l.mjs?v=20261126-2';
+import {isRack4CoreName,prepareRack4Core} from './ios-rack4-core.mjs?v=20261128-1';
 const $=id=>document.getElementById(id);let job=null,origin=null,accept=null,source=null,session=null,cleanupPending=false,ended=false,busy=false,operation=null,confirmed=0,receivedAt=null,ageTimer=null,ageMinute=-1;
 const saveFilter=$('hide-save-commands');
 const routingFilter=$('filter-no-ip-routing');
 const catalystFilter=$('catalyst2960-profile');
 const c8200lFilter=$('c8200l-profile');
+const rack4Filter=$('rack4-core-profile');
 let uploadPlan=null;
 const snmpFilter=$('snmp-profile');
 const snmpAuth=$('snmp-auth');
@@ -19,6 +21,7 @@ const accessSwitchNames = new Set(['S-CHI', 'S-NY', 'SW-BRU-ACC1', 'SW-BRU-ACC2'
 routingFilter.checked=false;
 catalystFilter.checked=false;
 c8200lFilter.checked=false;
+rack4Filter.checked=false;
 snmpFilter.checked=false;
 const consoleInput = $('console-input');
 const consoleOutput = $('console-output');
@@ -58,16 +61,19 @@ function setSourceName(name) {
 function isRouterSource() {
  return [source?.name, source?.hostname].some(name => name && routerName.test(name.trim()));
 }
+function isRack4Source() {
+ return [source?.name, source?.hostname].some(isRack4CoreName);
+}
 function phase(value,label){$('app').dataset.phase=value;$('phase-badge').textContent=label;const step=value==='fetching'||value==='waiting'?'fetch':value==='ready'?'ready':value==='error'&&$('fetch-progress').value<100?'fetch':'upload';for(const key of ['fetch','ready','upload']){const el=$('step-'+key);el.toggleAttribute('data-active',key===step);if(key===step)el.setAttribute('aria-current','step');else el.removeAttribute('aria-current');}}
 function updateSend(){
  const authReady=validSNMPCredential(snmpAuth.value);
  const privReady=validSNMPCredential(snmpPriv.value);
  const snmpReady=snmpDescription&&authReady&&privReady;
- $('send').disabled=!SERIAL_WRITES_ENABLED||!serialAvailable()||!source||!uploadPlan||busy||cleanupPending||
+ $('send').disabled=isRack4Source()||!SERIAL_WRITES_ENABLED||!serialAvailable()||!source||!uploadPlan||busy||cleanupPending||
   writingManually||helpLinePending||consoleState!=='open'||!transcript.ready||enteringPassword||(snmpFilter.checked&&!snmpReady);
  saveFilter.disabled=busy||cleanupPending;
  routingFilter.disabled=busy||cleanupPending;
- catalystFilter.disabled=c8200lFilter.disabled=busy||cleanupPending;
+ catalystFilter.disabled=c8200lFilter.disabled=rack4Filter.disabled=busy||cleanupPending;
  snmpFilter.disabled=!snmpDescription||busy||cleanupPending;
  snmpAuth.disabled=snmpPriv.disabled=snmpFilter.disabled||!snmpFilter.checked;
  snmpAuth.setAttribute('aria-invalid',String(Boolean(snmpAuth.value&&!authReady)));
@@ -109,7 +115,7 @@ function renderConsole() {
  const prompt = enteringPassword ? 'Password:' : transcript.prompt;
  $('console-form').hidden = !showInput;
  $('console-prompt').hidden = !prompt;
- $('console-prompt').textContent = prompt || '—';
+ $('console-prompt').textContent = prompt || 'â€”';
  consoleInput.placeholder = enteringPassword ? 'Wachtwoord' : 'Commando of reactie';
  consoleInput.disabled = !manual || transcript.more || helpLinePending;
  $('console-enter').disabled = consoleInput.disabled;
@@ -127,6 +133,10 @@ function renderConsole() {
 function selectedUpload(){
  const excludeNoIpRouting=Boolean(routingFilter.checked&&source.noIpRoutingCount);
  const excludeVirtualSNMPEngineId=Boolean(snmpFilter.checked&&snmpDescription?.excludesEngineId);
+ if(rack4Filter.checked){
+  const rack4=prepareRack4Core(source.rawConfig,source.name);
+  return prepareRunning(rack4.config,{excludeVirtualSNMPEngineId,excludeVersionHeader:true});
+ }
  if(c8200lFilter.checked){
   const router=prepareC8200L(source.rawConfig);
   return {
@@ -173,9 +183,12 @@ function renderSNMP(){
 function renderUploadConfig(){
  uploadPlan=null;
  const router = isRouterSource();
+ const rack4 = isRack4Source();
+ const rack4Note=$('rack4-core-note');
  $('save-control').hidden=!source;
  $('routing-control').hidden=!source?.noIpRoutingCount;
- $('catalyst2960-control').hidden=!source||router;
+ $('catalyst2960-control').hidden=!source||router||rack4;
+ $('rack4-core-control').hidden=!rack4;
  $('c8200l-control').hidden=!router;
  renderSNMP();
  if(!source){
@@ -183,21 +196,28 @@ function renderUploadConfig(){
   $('config-details').open=false;
   return;
  }
+ if(rack4){
+  rack4Note.textContent='Voorvertoning van de 48-poorts L3-configuratie. Fysieke verzending wacht op bevestiging van model en IOS.';
+ }
  const routerNote=$('c8200l-note');
- routerNote.textContent='Het Rack 4-profiel vertaalt Gi0/0 t/m Gi0/3 naar Gi0/0/0 t/m Gi0/0/3. Het toestelmodel en de IOS XE-versie worden vóór de upload gecontroleerd.';
+ routerNote.textContent='Het Rack 4-profiel vertaalt Gi0/0 t/m Gi0/3 naar Gi0/0/0 t/m Gi0/0/3. Het toestelmodel en de IOS XE-versie worden vÃ³Ã³r de upload gecontroleerd.';
  try {
   uploadPlan=selectedUpload();
  } catch(error) {
-  if(!c8200lFilter.checked)throw error;
-  routerNote.textContent=error.message;
+  if(!c8200lFilter.checked&&!rack4Filter.checked)throw error;
+  const note=rack4Filter.checked?rack4Note:routerNote;
+  note.textContent=error.message;
   $('config').textContent='';
   $('config-details').open=false;
-  $('detail').textContent='Geen verzendlijst voor dit routerprofiel.';
+  $('detail').textContent=rack4Filter.checked?'Geen voorvertoning voor Rack 4.':'Geen verzendlijst voor dit routerprofiel.';
   $('upload-note').textContent='Kies een bruikbare config voor dit profiel.';
   updateSend();
   return;
  }
  const plan=uploadPlan;
+ if(rack4Filter.checked){
+  rack4Note.textContent='Port-channel1 gebruikt Gi1/0/47 en Gi1/0/48. Deze configuratie staat klaar als voorvertoning.';
+ }
  if(plan.c8200lChanges){
   routerNote.textContent+=' Actieve bronpoorten krijgen no shutdown. Controleer de verzendlijst voor de upload.';
  }
@@ -208,10 +228,10 @@ function renderUploadConfig(){
  const changes=plan.catalystChanges;
  $('catalyst2960-note').textContent=changes
   ? `${Object.values(changes).reduce((sum,value)=>sum+value,0)} aanpassingen. Bekijk hieronder de verzendlijst. SSH-algoritmes en het eigen certificaat volgen de mogelijkheden van de fysieke switch.`
-  : 'Zet dit aan voor de fysieke WS-C2960-24TT-L of WS-C2960-24TC-L met IOS 15.0(2)SE. Het model wordt vóór de upload gecontroleerd.';
+  : 'Zet dit aan voor de fysieke WS-C2960-24TT-L of WS-C2960-24TC-L met IOS 15.0(2)SE. Het model wordt vÃ³Ã³r de upload gecontroleerd.';
  const total=commands.length+included+1+(snmpFilter.checked?snmpDescription.operationCount:0);
  $('config').textContent=config;
- $('detail').textContent=`${new TextEncoder().encode(config).byteLength.toLocaleString('nl-BE')} bytes · ${total} consoleopdrachten · hostname ${source.hostname}`;
+ $('detail').textContent=`${new TextEncoder().encode(config).byteLength.toLocaleString('nl-BE')} bytes Â· ${total} consoleopdrachten Â· hostname ${source.hostname}`;
  if(!$('upload-progress').value)$('upload-note').textContent=`0 van ${total} consoleopdrachten, inclusief configure terminal.`;
  const saveNote=included
   ?`${included} ${included===1?'opslagopdracht wordt':'opslagopdrachten worden'} na de running-config uitgevoerd.`
@@ -220,8 +240,8 @@ function renderUploadConfig(){
    :'Geen opslagopdrachten gevonden in deze running-config.';
  $('save-upload-note').textContent=saveFilter.checked&&plan.excludedStorageSettings
   ?`${saveNote} service compress-config wordt overgeslagen.` :saveNote;
- $('destination-save-title').textContent=included?'Ook opslaan voor herstart':'Alleen de running-config';
- $('destination-save-note').textContent=included
+ $('destination-save-title').textContent=rack4?'Alleen voorvertoning':included?'Ook opslaan voor herstart':'Alleen de running-config';
+ $('destination-save-note').textContent=rack4?'Bevestig het fysieke model en IOS voor een latere upload.':included
   ?'De opslagopdrachten schrijven de actieve configuratie naar de startup-config van het fysieke toestel.'
   :'De upload past de regels toe in het werkgeheugen van het toestel.';
  const routingCount=source.noIpRoutingCount;
@@ -240,13 +260,13 @@ window.addEventListener('message',e=>{
  if(d.type==='offer'&&!job&&/^[a-f0-9]{32}$/.test(d.job)){job=d.job;origin=e.origin;accept=receiver(origin,opener,job);setSourceName(typeof d.name === 'string' && d.name ? d.name : 'Virtueel toestel');opener.postMessage({type:'accept',version:1,job},origin);return;}
  if(e.origin!==origin||d.job!==job)return;
  if(d.type==='error'){failed(d.code==='node_not_running'?'Het virtuele toestel staat uit. Start hem eerst; er is geen oude config gebruikt.':'Ophalen mislukt ('+String(d.code).replace(/[^a-z_]/g,'').slice(0,50)+'). Open de knop opnieuw.');return;}
- if(d.type==='status'){phase('fetching','Running-config ophalen');$('fetch-progress').removeAttribute('value');$('fetch-value').textContent='Bezig';$('fetch-note').textContent='Het toestel wordt uitgelezen. Een percentage is pas bekend als de volledige config ontvangen is.';status(d.state==='credentials'?'Vul de tijdelijke exportgegevens in het GNS3-venster in.':'Actuele running-config wordt opgehaald…');return;}
+ if(d.type==='status'){phase('fetching','Running-config ophalen');$('fetch-progress').removeAttribute('value');$('fetch-value').textContent='Bezig';$('fetch-note').textContent='Het toestel wordt uitgelezen. Een percentage is pas bekend als de volledige config ontvangen is.';status(d.state==='credentials'?'Vul de tijdelijke exportgegevens in het GNS3-venster in.':'Actuele running-config wordt opgehaaldâ€¦');return;}
  try {
   const data = accept?.(e);
   if (!data) return;
   source = data;
   c8200lFilter.checked = isRouterSource();
-  const accessSwitch = !c8200lFilter.checked && accessSwitchNames.has(data.name.trim().toUpperCase());
+  const accessSwitch = !isRack4Source() && !c8200lFilter.checked && accessSwitchNames.has(data.name.trim().toUpperCase());
   catalystFilter.checked = accessSwitch;
   routingFilter.checked = accessSwitch && data.noIpRoutingCount > 0;
   ended = true;
@@ -264,8 +284,8 @@ window.addEventListener('message',e=>{
   $('fetch-value').textContent = '100%';
   $('fetch-note').textContent = data.prepared
    ? 'Uploadconfig gecontroleerd. Bekende labwachtwoorden staan in klare tekst.' : 'Volledige running-config ontvangen en gecontroleerd.';
-  phase('ready','Gereed voor upload');
-  status(data.prepared ? 'Uploadconfig staat klaar. Bekende labwachtwoorden gaan in klare tekst mee.'
+  phase('ready',isRack4Source()?'Gereed voor voorvertoning':'Gereed voor upload');
+  status(isRack4Source() ? 'Bron ontvangen. Kies Rack 4 om de fysieke poortnamen te bekijken.' : data.prepared ? 'Uploadconfig staat klaar. Bekende labwachtwoorden gaan in klare tekst mee.'
    : 'Running-config staat klaar. Verbinden en klaarzetten doe je in de fysieke console.');
   if (data.prepared) $('config-details').querySelector('summary').firstChild.textContent = 'Uploadconfig bekijken ';
   $('browser-note').textContent = !serialAvailable() ? 'Gebruik Chrome of Edge op je laptop om via USB-console te uploaden.'
@@ -302,13 +322,13 @@ async function closeConsole(owned, message) {
 }
 
 function showPromptHint() {
- const shortcuts = '↑/↓ Geschiedenis · Tab Aanvullen · ? IOS-help';
+ const shortcuts = 'â†‘/â†“ Geschiedenis Â· Tab Aanvullen Â· ? IOS-help';
  if (helpLinePending) showConsoleMessage('Druk op de knop Ctrl+C om de onafgewerkte IOS-invoer te wissen.');
  else if (transcript.password || enteringPassword) showConsoleMessage('Voer het wachtwoord voor de fysieke console in.');
  else if (transcript.more) showConsoleMessage('Klik op Volgende pagina of onderbreek de uitvoer.');
  else if (transcript.question) showConsoleMessage('Lees eerst de IOS-vraag in de console en geef bewust antwoord.');
- else if (transcript.prompt.endsWith('>')) showConsoleMessage('Typ enable voor de gewone #‑prompt. ' + shortcuts);
- else if (transcript.prompt && !transcript.ready) showConsoleMessage('Typ end voor de gewone #‑prompt. ' + shortcuts);
+ else if (transcript.prompt.endsWith('>')) showConsoleMessage('Typ enable voor de gewone #â€‘prompt. ' + shortcuts);
+ else if (transcript.prompt && !transcript.ready) showConsoleMessage('Typ end voor de gewone #â€‘prompt. ' + shortcuts);
  else if (transcript.ready) showConsoleMessage(shortcuts);
  else showConsoleMessage('Druk op Enter om de prompt op te vragen.');
 }
@@ -352,7 +372,7 @@ $('console-connect').onclick = async event => {
   });
   session = owned;
   consoleState = 'opening';
-  showConsoleMessage('USB-console openen…');
+  showConsoleMessage('USB-console openenâ€¦');
   renderConsole();
   await owned.open({baudRate, dataBits:8, stopBits:1, parity:'none', flowControl:'none'});
   if (session !== owned || consoleState !== 'opening' || leaving) return;
@@ -445,7 +465,7 @@ function showContextHelp(prefix) {
   const getPage = async keys => parse(await owned.exchangeInput(keys,
    reply => parse(reply) !== null, {timeoutMs:Math.max(1, deadline - performance.now())}));
   helpLinePending = true;
-  showConsoleMessage('IOS-help ophalen…');
+  showConsoleMessage('IOS-help ophalenâ€¦');
   let page = await getPage(request);
   output.push(page.output);
   while (page.more) {
@@ -518,7 +538,7 @@ if (personalShortcutForm && personalShortcut) {
   if (!event.isTrusted || leaving) return;
   const value = personalShortcutField.value;
   if (controlCharacters.test(value)) {
-   personalShortcutStatus.textContent = 'Gebruik één tekstregel zonder besturingstekens.';
+   personalShortcutStatus.textContent = 'Gebruik Ã©Ã©n tekstregel zonder besturingstekens.';
    return;
   }
   try {
@@ -604,7 +624,7 @@ async function verifyC8200L(exchange) {
 }
 
 $('send').onclick = async event => {
- if (!event.isTrusted || $('send').disabled || !session || !source || leaving) return;
+ if (!event.isTrusted || isRack4Source() || $('send').disabled || !session || !source || leaving) return;
  const owned = session;
  const signal = (operation = new AbortController()).signal;
  const includeSaveCommands = !saveFilter.checked;
@@ -622,7 +642,7 @@ $('send').onclick = async event => {
  $('upload-value').textContent = '0%';
  $('stop').hidden = false;
  phase('uploading', 'Upload actief');
- status('Console controleren en configuratie overdragen…');
+ status('Console controleren en configuratie overdragenâ€¦');
  showConsoleMessage('Je kunt de antwoorden volgen. Handmatige invoer komt na de upload terug.');
  renderConsole();
 
@@ -684,7 +704,7 @@ $('stop').onclick = event => {
  if (!event.isTrusted || !busy || !session) return;
  operation?.abort();
  session.stop();
- status('Stoppen… de actieve consolebewerking wordt afgebroken.');
+ status('Stoppenâ€¦ de actieve consolebewerking wordt afgebroken.');
  void closeConsole(session, 'Upload gestopt. De consoleverbinding is verbroken.');
 };
 
@@ -711,6 +731,10 @@ saveFilter.onchange = renderUploadConfig;
 routingFilter.onchange = renderUploadConfig;
 catalystFilter.onchange = renderUploadConfig;
 c8200lFilter.onchange = renderUploadConfig;
+rack4Filter.onchange = () => {
+ renderUploadConfig();
+ if (rack4Filter.checked && uploadPlan) $('config-details').open = true;
+};
 snmpFilter.onchange = () => {
  if(!snmpFilter.checked)clearSNMPCredentials();
  renderUploadConfig();
