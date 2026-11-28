@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Upload config · Project 2026 - 24Fa</title>
+  <link rel="stylesheet" href="rack-upload.css?v=20261128-1">
+  <script type="module" src="rack-upload.mjs?v=20261128-1"></script>
+</head>
+<body>
+  <main class="rack-layout">
+    <aside class="rack-sidebar" aria-labelledby="rack-title">
+      <h1 id="rack-title" class="visually-hidden">Fysiek rack van 24Fa</h1>
+      <div class="rack-picture" id="rack-picture" hidden>
+        <div class="rack-full-image">
+          <img id="rack-image" alt="Fysiek rack van 24Fa">
+          <div id="rack-devices" role="group" aria-label="Uploadbaar racktoestel kiezen"></div>
+        </div>
+      </div>
+      <p id="rack-status" role="status">Wachten op GNS3…</p>
+      <button id="use-previous" type="button" hidden>Vorige kopie gebruiken</button>
+    </aside>
+    <section id="rack-panel" aria-label="Configuratie en fysieke console"></section>
+  </main>
+</body>
+</html>

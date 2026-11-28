@@ -1,6 +1,12 @@
 # GNS3 Console Upload
 
-Statische HTTPS-pagina voor de menuactie **Upload config** bij Cisco-toestellen in GNS3. Open de pagina vanuit GNS3 om de bronconfig te ontvangen.
+Statische HTTPS-uploader voor de menuactie **Upload config** bij Cisco- en Palo Alto-toestellen in GNS3. Open de pagina vanuit GNS3 om de bronconfig te ontvangen.
+
+## Wisselen vanuit het 24Fa-rack
+
+Open **Upload config** vanuit Project 2026 - 24Fa. Klik links in het rack op de volgende router, switch of firewall. De uploader haalt de bijbehorende opgeslagen kopie op uit Configcache. Laat het GNS3-tabblad daarvoor open.
+
+Een open COM-verbinding blijft beschikbaar terwijl je in het rack wisselt. Sluit de consolekabel aan op het gekozen toestel en druk op **Enter** voor een verse prompt. Staat in de prompt een fabrieksnaam of andere onbekende naam, bevestig dan de koppeling met je gekozen toestel. Je start elke upload zelf. Tijdens een overdracht wacht de toestelkeuze tot de consolebewerking klaar is.
 
 ## Fysieke console en upload
 
@@ -20,7 +26,7 @@ Bij R-CHI1, R-NY en R-Provider staat het profiel **C8200L-1N-4T met IOS XE 17.12
 
 Bij S-CHI, S-NY, SW-BRU-ACC1 en SW-BRU-ACC2 staat het profiel **Catalyst 2960** bij elke nieuwe uploadpagina standaard aan. De pagina controleert het fysieke model en de IOS-versie vóór de overdracht. Je kunt het profiel per sessie uitvinken.
 
-Bij een geslaagde overdracht of een IOS-weigering blijft de verbinding open voor handmatige controle. Wie opnieuw wil uploaden nadat `configure terminal` is aangeboden, opent een nieuwe bron via GNS3. **Verbreken** sluit de verbinding. **Upload stoppen**, een I/O-time-out of verlies van de poort sluit de verbinding en bewaakt de vrijgave.
+Bij een geslaagde overdracht of een IOS-weigering blijft de verbinding open voor handmatige controle. Op de losse Cisco-pagina open je voor een nieuwe overdracht opnieuw **Upload config** vanuit GNS3. **Verbreken** sluit de verbinding. **Upload stoppen**, een I/O-time-out of verlies van de poort sluit de verbinding en bewaakt de vrijgave.
 
 **Opslagopdrachten uit de config filteren** staat standaard aangevinkt. Uitvinken neemt `write memory` en `copy running-config startup-config` mee als deze in de opgehaalde bron staan. De uploader voert ze na `end` uit, zodat de fysieke switch de configuratie ook voor een herstart bewaart. Andere opslagvarianten blijven gefilterd.
 

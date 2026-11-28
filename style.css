@@ -301,3 +301,11 @@ body:has(.upload-app){background:#f5f7fa;color:#192c43}.upload-app{max-width:118
     font-size: 16px;
   }
 }
+
+.rack-upload-panel .upload-app {
+  max-width: none;
+  padding-right: 0;
+  padding-left: 0;
+}
+
+.rack-upload-panel .rack-confirm { margin-top: 10px; }

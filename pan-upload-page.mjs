@@ -3,6 +3,7 @@ import { SerialSession, serialErrorMessage } from './upload-serial.mjs?v=2026112
 import { ConsoleTranscript } from './upload-terminal.mjs?v=20261122-1';
 import { PAN_INPUT_MAX_BYTES, PAN_PAGER_PROMPT, identifyPAN, panPrompt, panosTrain, preparePAN, preparePANConsole, stagePAN } from './pan-upload-core.mjs?v=20261126-4';
 import { PA440_101_TRAIN, preparePa440101 } from './pan-pa440-101.mjs?v=20261126-1';
+import { attachRackPanel } from './rack-panel.mjs?v=20261128-1';
 
 const $ = id => document.getElementById(id);
 const consoleInput = $('console-input');
@@ -80,6 +81,8 @@ let cancelCacheRequest = null;
 let sourceRevision = 0;
 let readingFile = false;
 let leaving = false;
+let rackPanel = null;
+let rackPromptRequested = false;
 
 function status(message, phase = 'waiting', label = 'Wacht op console') {
   $('app').dataset.phase = phase;
@@ -127,7 +130,8 @@ function render() {
   const open = consoleState === 'open';
   const manual = open && !operation && !writingManually && !leaving;
   const prompt = panPrompt(transcript.prompt);
-  const canCheck = manual && prompt?.mode === 'operational' && !transcript.more && !transcript.password;
+  const promptReady = !rackPanel || rackPanel.showHostname(open && rackPromptRequested ? prompt?.hostname : undefined);
+  const canCheck = manual && prompt?.mode === 'operational' && !transcript.more && !transcript.password && promptReady;
   const matchingPrompt = checkedDevice?.hostname.toLowerCase() === prompt?.hostname.toLowerCase();
   const maskInput = transcript.password || (consoleInput.type === 'password' && consoleInput.value !== '');
   $('app').dataset.portState = consoleState;
@@ -174,6 +178,7 @@ function render() {
     consoleOutput.textContent = output;
     if (follow) consoleOutput.scrollTop = consoleOutput.scrollHeight;
   }
+  rackPanel?.update();
 }
 
 function consoleMessage(message) {
@@ -187,7 +192,13 @@ function showPromptHint() {
   else if (transcript.more) consoleMessage(transcript.mode === 'upload'
     ? 'Gebruik Ctrl+C om terug te keren naar de prompt.'
     : 'Klik op Volgende pagina of onderbreek de uitvoer.');
-  else if (panPrompt(transcript.prompt)?.mode === 'configuration') {
+  else if (rackPanel && !rackPromptRequested) {
+    consoleMessage('Controleer de consolekabel en druk op Enter voor de toestelprompt.');
+  } else if (rackPanel && transcript.prompt && !rackPanel.matchesHostname(panPrompt(transcript.prompt)?.hostname)) {
+    consoleMessage(rackPanel.hostnameState(panPrompt(transcript.prompt)?.hostname) === 'other'
+      ? 'De console toont een ander racktoestel. Controleer de kabel en druk opnieuw op Enter.'
+      : 'Controleer of de weergegeven console bij de gekozen firewall hoort en bevestig de koppeling.');
+  } else if (panPrompt(transcript.prompt)?.mode === 'configuration') {
     consoleMessage('Je staat in de configuratiemodus. Beoordeel de candidate vóór je zelf commit. Gebruik exit om terug te keren voor een nieuwe toestelcontrole.');
   } else if (transcript.prompt && cachedSource && prepared) {
     consoleMessage('De operationele prompt is klaar. De identiteit en candidate worden bij de upload gecontroleerd.');
@@ -219,6 +230,24 @@ async function closeConsole(owned, message) {
   if (result.pending) void owned.closed.then(late => finishClose(owned, late, message));
 }
 
+function consoleEvents(owner) {
+  return {
+    onData(value) {
+      if (session !== owner() || leaving || !['opening', 'open'].includes(consoleState)) return;
+      transcript.feed(value);
+      const prompt = panPrompt(transcript.prompt);
+      if (checkedDevice && (transcript.login || transcript.password ||
+        (prompt && checkedDevice.hostname.toLowerCase() !== prompt.hostname.toLowerCase()))) checkedDevice = null;
+      if (consoleState === 'open' && !operation) showPromptHint();
+      render();
+    },
+    onDisconnect(error) {
+      const owned = owner();
+      if (session === owned && !leaving) void closeConsole(owned, serialErrorMessage(error));
+    }
+  };
+}
+
 $('console-connect').onclick = async event => {
   if (!event.isTrusted || $('console-connect').disabled) return;
   if (consoleState === 'open') {
@@ -232,23 +261,13 @@ $('console-connect').onclick = async event => {
   render();
   let owned;
   try {
-    const port = await navigator.serial.requestPort();
+    const port = await (rackPanel ? rackPanel.requestPort() : navigator.serial.requestPort());
     if (leaving) return;
     transcript = new PANTranscript();
-    owned = new SerialSession(port, {
-      onData(value) {
-        if (session !== owned || leaving || !['opening', 'open'].includes(consoleState)) return;
-        transcript.feed(value);
-        const prompt = panPrompt(transcript.prompt);
-        if (checkedDevice && (transcript.login || transcript.password ||
-          (prompt && checkedDevice.hostname.toLowerCase() !== prompt.hostname.toLowerCase()))) checkedDevice = null;
-        if (consoleState === 'open' && !operation) showPromptHint();
-        render();
-      },
-      onDisconnect(error) {
-        if (session === owned && !leaving) void closeConsole(owned, serialErrorMessage(error));
-      }
-    });
+    rackPromptRequested = false;
+    rackPanel?.resetPrompt();
+    const callbacks = consoleEvents(() => owned);
+    owned = rackPanel ? rackPanel.createSession(port, baudRate, callbacks) : new SerialSession(port, callbacks);
     session = owned;
     consoleState = 'opening';
     consoleMessage('USB-console openen…');
@@ -275,6 +294,7 @@ async function writeManual(value, input = '', password = false) {
   if (consoleState !== 'open' || operation || writingManually || leaving || !session) return;
   const owned = session;
   writingManually = true;
+  if (rackPanel && value.endsWith('\r')) rackPromptRequested = true;
   if (input !== '') checkedDevice = null;
   transcript.beginInput(input, { password });
   consoleInput.value = '';
@@ -449,6 +469,9 @@ $('upload').onclick = event => {
       await preparePANConsole(exchange, prompt, {signal});
       const expectedDevice = checkedBeforeUpload ?? await identifyPAN(exchange, {signal});
       if (leaving || signal.aborted || consoleState !== 'open') return;
+      if (rackPanel && !rackPanel.matchesHostname(expectedDevice.hostname)) {
+        throw Error('De fysieke firewall hoort niet bij het bevestigde toestel.');
+      }
       checkedDevice = expectedDevice;
       const result = await stagePAN(commands, exchange, {
         expectedDevice, requiredTrain, requiredModel: requiredTrain ? CACHE_TARGET_MODEL : undefined, signal,
@@ -481,6 +504,31 @@ $('stop').onclick = event => {
   void closeConsole(owned, 'Consolebewerking gestopt. De consoleverbinding is verbroken.');
 };
 
+async function applyCacheSource(data) {
+  if (leaving || sourceRevision) return;
+  try {
+    const train = panosTrain(data.panosVersion);
+    const isoDate = typeof data.capturedAt === 'string' &&
+      /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,6})?(?:Z|[+-]\d\d:\d\d)$/.test(data.capturedAt);
+    const captured = isoDate ? Date.parse(data.capturedAt) : NaN;
+    if (!train || !Number.isFinite(captured) || !Number.isSafeInteger(data.skipped) || data.skipped < 0) {
+      throw Error('Ongeldige bronmetadata');
+    }
+    const commands = preparePAN(data.config);
+    const profileEligible = Boolean(panos101Profile) && target === 'FW-NY' && train === '11.2';
+    const translated = profileEligible ? await preparePa440101(commands) : null;
+    if (leaving || sourceRevision) return;
+    const dateFormat = new Intl.DateTimeFormat('nl-BE', {dateStyle:'medium', timeStyle:'short', timeZone:'Europe/Brussels'});
+    const label = `Configcache van ${dateFormat.format(captured)} · PAN-OS ${data.panosVersion}` +
+      (data.skipped ? ` · ${data.skipped} onderdelen overgeslagen` : '');
+    cachedSource = {sourceTrain:train, commands, translated, profileEligible, label};
+    if (panos101Profile) panos101Profile.checked = Boolean(translated);
+    showCachedProfile();
+  } catch {
+    if (!leaving && !sourceRevision) status('GNS3 gaf geen geldige PAN-OS-verzendlijst door.', 'error', 'Bron geweigerd');
+  }
+}
+
 function requestCacheSource() {
   const opener = window.opener;
   if (!opener) {
@@ -489,7 +537,6 @@ function requestCacheSource() {
   }
   const random = crypto.getRandomValues(new Uint8Array(16));
   const job = Array.from(random, octet => octet.toString(16).padStart(2, '0')).join('');
-  const dateFormat = new Intl.DateTimeFormat('nl-BE', {dateStyle:'medium', timeStyle:'short', timeZone:'Europe/Brussels'});
   const deadline = setTimeout(() => {
     cancel();
     if (!leaving && !sourceRevision) {
@@ -503,7 +550,7 @@ function requestCacheSource() {
     cancelCacheRequest = null;
   }
 
-  async function receive(event) {
+  function receive(event) {
     const data = event.data;
     if (leaving || event.source !== opener || !SOURCE_ORIGINS.includes(event.origin) ||
         data?.version !== 1 || data.device !== target || data.job !== job ||
@@ -523,26 +570,7 @@ function requestCacheSource() {
       status(message, 'error', 'Bron ontbreekt');
       return;
     }
-    try {
-      const train = panosTrain(data.panosVersion);
-      const isoDate = typeof data.capturedAt === 'string' &&
-        /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,6})?(?:Z|[+-]\d\d:\d\d)$/.test(data.capturedAt);
-      const captured = isoDate ? Date.parse(data.capturedAt) : NaN;
-      if (!train || !Number.isFinite(captured) || !Number.isSafeInteger(data.skipped) || data.skipped < 0) {
-        throw Error('Ongeldige bronmetadata');
-      }
-      const commands = preparePAN(data.config);
-      const profileEligible = Boolean(panos101Profile) && target === 'FW-NY' && train === '11.2';
-      const translated = profileEligible ? await preparePa440101(commands) : null;
-      if (leaving || sourceRevision) return;
-      const label = `Configcache van ${dateFormat.format(captured)} · PAN-OS ${data.panosVersion}` +
-        (data.skipped ? ` · ${data.skipped} onderdelen overgeslagen` : '');
-      cachedSource = {sourceTrain:train, commands, translated, profileEligible, label};
-      if (panos101Profile) panos101Profile.checked = Boolean(translated);
-      showCachedProfile();
-    } catch {
-      if (!leaving && !sourceRevision) status('GNS3 gaf geen geldige PAN-OS-verzendlijst door.', 'error', 'Bron geweigerd');
-    }
+    void applyCacheSource(data);
   }
 
   cancelCacheRequest = cancel;
@@ -557,7 +585,7 @@ window.addEventListener('pagehide', () => {
   leaving = true;
   cancelCacheRequest?.();
   operation?.controller.abort();
-  session?.stop();
+  if (!rackPanel) session?.stop();
   checkedDevice = null;
   cachedSource = null;
   clearReview();
@@ -573,7 +601,25 @@ window.addEventListener('pageshow', event => {
 
 if (targetKnown) {
   $('targetDevice').textContent = target;
-  if (cacheRequested) requestCacheSource();
+  rackPanel = attachRackPanel({
+    isBusy:() => operation !== null || writingManually || ['choosing', 'opening', 'closing', 'blocked'].includes(consoleState),
+    refresh() { showPromptHint(); render(); },
+    receive({snapshot, error}) {
+      if (error) status(error, 'error', 'Bron ontbreekt');
+      else void applyCacheSource(snapshot);
+    },
+  });
+  if (rackPanel) {
+    status('De opgeslagen configuratie wordt opgehaald uit GNS3.', 'waiting', 'Configcache ophalen');
+    const resumed = rackPanel.resume(consoleEvents(() => session));
+    if (resumed) {
+      session = resumed.session;
+      $('baud').value = String(resumed.baudRate);
+      consoleState = 'open';
+      showPromptHint();
+    }
+    rackPanel.ready();
+  } else if (cacheRequested) requestCacheSource();
 } else status('Open Upload config bij FW-NY of FW-BRU in GNS3.', 'error', 'Kies een firewall');
 if (!serialAvailable) consoleMessage('Gebruik Chrome of Edge via HTTPS om een USB-console te openen.');
 render();

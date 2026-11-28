@@ -5,6 +5,7 @@ import {ConsoleTranscript,iosCompletion,iosCompletionOutput,iosHelpPage} from '.
 import {prepareCatalyst2960} from './ios-catalyst2960.mjs?v=20261123-3';
 import {prepareC8200L} from './ios-c8200l.mjs?v=20261126-2';
 import {isRack4CoreName,prepareRack4Core} from './ios-rack4-core.mjs?v=20261128-1';
+import {attachRackPanel} from './rack-panel.mjs?v=20261128-1';
 const $=id=>document.getElementById(id);let job=null,origin=null,accept=null,source=null,session=null,cleanupPending=false,ended=false,busy=false,operation=null,confirmed=0,receivedAt=null,ageTimer=null,ageMinute=-1;
 const saveFilter=$('hide-save-commands');
 const routingFilter=$('filter-no-ip-routing');
@@ -49,6 +50,8 @@ const commandHistory = [];
 let historyIndex = 0;
 let historyDraft = '';
 let leaving = false;
+let rackPanel = null;
+let rackPromptRequested = false;
 const serialAvailable=()=>!!navigator.serial&&isSecureContext;
 function status(value){$('status').textContent=value;}
 function setSourceName(name) {
@@ -69,8 +72,10 @@ function updateSend(){
  const authReady=validSNMPCredential(snmpAuth.value);
  const privReady=validSNMPCredential(snmpPriv.value);
  const snmpReady=snmpDescription&&authReady&&privReady;
+ const promptReady=rackPromptReady();
  $('send').disabled=isRack4Source()||!SERIAL_WRITES_ENABLED||!serialAvailable()||!source||!uploadPlan||busy||cleanupPending||
-  writingManually||helpLinePending||consoleState!=='open'||!transcript.ready||enteringPassword||(snmpFilter.checked&&!snmpReady);
+  writingManually||helpLinePending||consoleState!=='open'||!transcript.ready||enteringPassword||
+  !promptReady||(snmpFilter.checked&&!snmpReady);
  saveFilter.disabled=busy||cleanupPending;
  routingFilter.disabled=busy||cleanupPending;
  catalystFilter.disabled=c8200lFilter.disabled=rack4Filter.disabled=busy||cleanupPending;
@@ -129,6 +134,7 @@ function renderConsole() {
  if (follow) consoleScreen.scrollTop = consoleScreen.scrollHeight;
  renderConsoleShortcuts();
  updateSend();
+ rackPanel?.update();
 }
 function selectedUpload(){
  const excludeNoIpRouting=Boolean(routingFilter.checked&&source.noIpRoutingCount);
@@ -264,9 +270,20 @@ window.addEventListener('message',e=>{
  try {
   const data = accept?.(e);
   if (!data) return;
+  applySource(data, d);
+ } catch {
+  failed('De opgehaalde bron is geen volledige bruikbare IOS running-config. Niets verstuurd.');
+ }
+});
+
+function applySource(data, {source:sourceType, capturedAt}) {
   source = data;
-  if (isRack4Source() && d.source === 'saved-cache') {
-   $('source-intro').textContent = 'Bekijk de opgeslagen startup-config uit Configcache met de Rack 4-poortnummering.';
+  const saved = sourceType === 'saved-cache';
+  if (saved) {
+   $('fetch-label').textContent = 'Opgeslagen config ophalen';
+   $('source-intro').textContent = isRack4Source()
+    ? 'Bekijk de opgeslagen startup-config uit Configcache met de Rack 4-poortnummering.'
+    : 'Upload de opgeslagen startup-config uit Configcache naar je fysieke toestel via USB-console.';
   }
   c8200lFilter.checked = isRouterSource();
   const accessSwitch = !isRack4Source() && !c8200lFilter.checked && accessSwitchNames.has(data.name.trim().toUpperCase());
@@ -277,9 +294,17 @@ window.addEventListener('message',e=>{
   clearTimeout(timeout);
   setSourceName(data.name);
   renderUploadConfig();
-  receivedAt = Date.now();
+  const storedAt = saved ? Date.parse(capturedAt) : NaN;
+  receivedAt = Number.isFinite(storedAt) ? storedAt : Date.now();
   $('received-at').dateTime = new Date(receivedAt).toISOString();
-  $('received-at').textContent = new Date(receivedAt).toLocaleTimeString('nl-BE', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  if (Number.isFinite(storedAt)) {
+   $('source-freshness').firstChild.textContent = 'Opgeslagen in Configcache op ';
+   $('received-at').textContent = new Date(storedAt).toLocaleString('nl-BE', {
+    dateStyle:'short', timeStyle:'short', timeZone:'Europe/Brussels',
+   });
+  } else {
+   $('received-at').textContent = new Date(receivedAt).toLocaleTimeString('nl-BE', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  }
   $('source-freshness').hidden = false;
   refreshAge();
   ageTimer = setInterval(refreshAge, 30000);
@@ -295,12 +320,26 @@ window.addEventListener('message',e=>{
    : !serialAvailable() ? 'Gebruik Chrome of Edge op je laptop om via USB-console te uploaden.'
    : !SERIAL_WRITES_ENABLED ? 'Verzenden is uitgeschakeld.' : 'De configuratie wordt pas verstuurd nadat jij de upload start.';
   updateSend();
+}
+
+function receiveRackSource({snapshot, error}) {
+ if (error) { failed(error); return; }
+ try {
+  const rawConfig = snapshot.config;
+  applySource({...prepareRunning(rawConfig), rawConfig, name:rackPanel.name, prepared:true}, {
+   source:'saved-cache', capturedAt:snapshot.capturedAt,
+  });
  } catch {
-  failed('De opgehaalde bron is geen volledige bruikbare IOS running-config. Niets verstuurd.');
+  failed('GNS3 gaf geen volledige bruikbare Cisco-config door.');
  }
-});
-for(const allowed of SOURCE_ORIGINS)opener?.postMessage({type:'ready',version:1},allowed);
-if(!opener){clearTimeout(timeout);ended=true;status('Open deze pagina via Upload config bij een toestel in GNS3.');}
+}
+
+function rackPromptReady() {
+ return !rackPanel || rackPanel.showHostname(consoleState === 'open' && rackPromptRequested ? iosHostname(transcript.prompt) : undefined);
+}
+
+const iosHostname = (prompt = '') => prompt.match(/^[\w.-]+/)?.[0];
+
 function finishConsoleClose(owned, result, message) {
  if (session !== owned) return;
  cleanupPending = !result.complete;
@@ -331,10 +370,38 @@ function showPromptHint() {
  else if (transcript.password || enteringPassword) showConsoleMessage('Voer het wachtwoord voor de fysieke console in.');
  else if (transcript.more) showConsoleMessage('Klik op Volgende pagina of onderbreek de uitvoer.');
  else if (transcript.question) showConsoleMessage('Lees eerst de IOS-vraag in de console en geef bewust antwoord.');
+ else if (rackPanel && !rackPromptRequested) showConsoleMessage('Controleer de consolekabel en druk op Enter voor de toestelprompt.');
+ else if (rackPanel && transcript.prompt && !rackPanel.matchesHostname(iosHostname(transcript.prompt))) {
+  showConsoleMessage(rackPanel.hostnameState(iosHostname(transcript.prompt)) === 'other'
+   ? 'De console toont een ander racktoestel. Controleer de kabel en druk opnieuw op Enter.'
+   : 'Controleer of de weergegeven console bij het gekozen toestel hoort en bevestig de koppeling.');
+ }
  else if (transcript.prompt.endsWith('>')) showConsoleMessage('Typ enable voor de gewone #â€‘prompt. ' + shortcuts);
  else if (transcript.prompt && !transcript.ready) showConsoleMessage('Typ end voor de gewone #â€‘prompt. ' + shortcuts);
  else if (transcript.ready) showConsoleMessage(shortcuts);
  else showConsoleMessage('Druk op Enter om de prompt op te vragen.');
+}
+
+function consoleEvents(owner) {
+ return {
+  onData(value) {
+   if (session !== owner() || leaving || !['opening', 'open'].includes(consoleState)) return;
+   if (editorChunks) {
+    editorChunks.push(value);
+    return;
+   }
+   transcript.feed(value);
+   if (helpLinePending && (transcript.prompt || transcript.password || /^(?:Username|Login):$/i.test(transcript.currentLine()))) {
+    helpLinePending = false;
+   }
+   if (consoleState === 'open' && !busy) showPromptHint();
+   renderConsole();
+  },
+  onDisconnect(error) {
+   const owned = owner();
+   if (session === owned && !leaving) void closeConsole(owned, serialErrorMessage(error));
+  }
+ };
 }
 
 $('console-connect').onclick = async event => {
@@ -351,29 +418,14 @@ $('console-connect').onclick = async event => {
  renderConsole();
  let owned;
  try {
-  const port = await navigator.serial.requestPort();
+  const port = await (rackPanel ? rackPanel.requestPort() : navigator.serial.requestPort());
   if (leaving) return;
   transcript = new ConsoleTranscript({showSensitive:true});
+  rackPromptRequested = false;
+  rackPanel?.resetPrompt();
   consoleInput.value = '';
-  owned = new SerialSession(port, {
-   onData(value) {
-    if (session !== owned || leaving || !['opening', 'open'].includes(consoleState)) return;
-    if (editorChunks) {
-     editorChunks.push(value);
-     return;
-    }
-    transcript.feed(value);
-    if (helpLinePending && (transcript.prompt || transcript.password || /^(?:Username|Login):$/i.test(transcript.currentLine()))) {
-     helpLinePending = false;
-    }
-    if (consoleState === 'open' && !busy) showPromptHint();
-    renderConsole();
-   },
-   onDisconnect(error) {
-    if (session !== owned || leaving) return;
-    void closeConsole(owned, serialErrorMessage(error));
-   }
-  });
+  const callbacks = consoleEvents(() => owned);
+  owned = rackPanel ? rackPanel.createSession(port, baudRate, callbacks) : new SerialSession(port, callbacks);
   session = owned;
   consoleState = 'opening';
   showConsoleMessage('USB-console openenâ€¦');
@@ -400,6 +452,7 @@ async function withManualConsole(action) {
  if (consoleState !== 'open' || busy || writingManually || leaving || !session) return;
  const owned = session;
  writingManually = true;
+ rackPanel?.update();
  try {
   await action(owned);
  } catch (error) {
@@ -417,6 +470,7 @@ async function withManualConsole(action) {
 
 function writeManual(value, input = '', password = false) {
  return withManualConsole(owned => {
+  if (rackPanel && value.endsWith('\r')) rackPromptRequested = true;
   transcript.beginInput(input, {password});
   consoleInput.value = '';
   resetHistoryNavigation();
@@ -629,6 +683,7 @@ async function verifyC8200L(exchange) {
 
 $('send').onclick = async event => {
  if (!event.isTrusted || isRack4Source() || $('send').disabled || !session || !source || leaving) return;
+ const boundHostname = rackPanel ? iosHostname(transcript.prompt)?.toUpperCase() : undefined;
  const owned = session;
  const signal = (operation = new AbortController()).signal;
  const includeSaveCommands = !saveFilter.checked;
@@ -651,11 +706,18 @@ $('send').onclick = async event => {
  renderConsole();
 
  try {
-  const exchange = (command, options) => {
+  const exchange = async (command, options) => {
    if (command === 'configure terminal') configurationStarted = true;
-   return owned.exchange(command, {
+   const reply = await owned.exchange(command, {
     acceptAdditionalPrompt: reply => Boolean(iosReplyPrompt(reply)) || options?.acceptAdditionalPrompt?.(reply)
    });
+   if (rackPanel && command === '\r' && !configurationStarted) {
+    const currentHostname = iosHostname(iosReplyPrompt(reply));
+    if (currentHostname?.toUpperCase() !== boundHostname || !rackPanel.matchesHostname(currentHostname)) {
+     throw Error('De nieuwe fysieke prompt hoort niet bij het bevestigde toestel.');
+    }
+   }
+   return reply;
   };
   const plan = uploadPlan;
   if(plan.c8200lChanges){
@@ -715,7 +777,7 @@ $('stop').onclick = event => {
 function leavePage() {
  leaving = true;
  operation?.abort();
- session?.stop();
+ if (!rackPanel) session?.stop();
  source = null;
  transcript = new ConsoleTranscript({showSensitive:true});
  accept = null;
@@ -749,8 +811,36 @@ snmpAuth.oninput = snmpPriv.oninput = () => {
  updateSend();
 };
 $('cancel').onclick = () => {
+ if (rackPanel) { rackPanel.closeWorkspace(); return; }
  leavePage();
  window.close();
 };
 window.addEventListener('pagehide', leavePage);
+
+rackPanel = attachRackPanel({
+ receive:receiveRackSource,
+ isBusy:() => busy || writingManually || (consoleState === 'open' && helpLinePending) ||
+  ['choosing', 'opening', 'closing', 'blocked'].includes(consoleState),
+ refresh() { showPromptHint(); renderConsole(); },
+});
+if (rackPanel) {
+ clearTimeout(timeout);
+ document.querySelector('.app-brand').removeAttribute('href');
+ setSourceName(rackPanel.name);
+ status('Opgeslagen config ophalen uit Configcache…');
+ $('fetch-label').textContent = 'Opgeslagen config ophalen';
+ $('fetch-note').textContent = 'De bewaarde kopie wordt opgehaald.';
+ phase('fetching','Configcache ophalen');
+ const resumed = rackPanel.resume(consoleEvents(() => session));
+ if (resumed) {
+  session = resumed.session;
+  $('baud').value = String(resumed.baudRate);
+  consoleState = 'open';
+  showPromptHint();
+ }
+ rackPanel.ready();
+} else {
+ for(const allowed of SOURCE_ORIGINS)opener?.postMessage({type:'ready',version:1},allowed);
+ if(!opener){clearTimeout(timeout);ended=true;status('Open deze pagina via Upload config bij een toestel in GNS3.');}
+}
 renderConsole();
