@@ -240,8 +240,8 @@ function renderUploadConfig(){
    :'Geen opslagopdrachten gevonden in deze running-config.';
  $('save-upload-note').textContent=saveFilter.checked&&plan.excludedStorageSettings
   ?`${saveNote} service compress-config wordt overgeslagen.` :saveNote;
- $('destination-save-title').textContent=rack4?'Alleen voorvertoning':included?'Ook opslaan voor herstart':'Alleen de running-config';
- $('destination-save-note').textContent=rack4?'Bevestig het fysieke model en IOS voor een latere upload.':included
+ $('destination-save-title').textContent=isRack4Source()?'Alleen voorvertoning':included?'Ook opslaan voor herstart':'Alleen de running-config';
+ $('destination-save-note').textContent=isRack4Source()?'Kies Rack 4 om de poortnummering voor de 48-poorts L3-core te bekijken.':included
   ?'De opslagopdrachten schrijven de actieve configuratie naar de startup-config van het fysieke toestel.'
   :'De upload past de regels toe in het werkgeheugen van het toestel.';
  const routingCount=source.noIpRoutingCount;
@@ -265,6 +265,9 @@ window.addEventListener('message',e=>{
   const data = accept?.(e);
   if (!data) return;
   source = data;
+  if (isRack4Source() && d.source === 'saved-cache') {
+   $('source-intro').textContent = 'Bekijk de opgeslagen startup-config uit Configcache met de Rack 4-poortnummering.';
+  }
   c8200lFilter.checked = isRouterSource();
   const accessSwitch = !isRack4Source() && !c8200lFilter.checked && accessSwitchNames.has(data.name.trim().toUpperCase());
   catalystFilter.checked = accessSwitch;
@@ -288,7 +291,8 @@ window.addEventListener('message',e=>{
   status(isRack4Source() ? 'Bron ontvangen. Kies Rack 4 om de fysieke poortnamen te bekijken.' : data.prepared ? 'Uploadconfig staat klaar. Bekende labwachtwoorden gaan in klare tekst mee.'
    : 'Running-config staat klaar. Verbinden en klaarzetten doe je in de fysieke console.');
   if (data.prepared) $('config-details').querySelector('summary').firstChild.textContent = 'Uploadconfig bekijken ';
-  $('browser-note').textContent = !serialAvailable() ? 'Gebruik Chrome of Edge op je laptop om via USB-console te uploaden.'
+  $('browser-note').textContent = isRack4Source() ? 'Voor deze core is alleen voorvertoning beschikbaar.'
+   : !serialAvailable() ? 'Gebruik Chrome of Edge op je laptop om via USB-console te uploaden.'
    : !SERIAL_WRITES_ENABLED ? 'Verzenden is uitgeschakeld.' : 'De configuratie wordt pas verstuurd nadat jij de upload start.';
   updateSend();
  } catch {
